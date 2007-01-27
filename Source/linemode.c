@@ -6,11 +6,17 @@
 #include <errno.h>  
 #include <limits.h>
 #include <time.h>
+
 #include "lbltp.h"
-#include "lblextrn.h"
+#include "vars.h"
+#include "linemode.h"
+#include "functions.h"
+#include "machine.h"
+
+/* Internal methods */
 static int cmdparse(unsigned char *,unsigned char *a[]);
 static struct deviceinfo *onwhat(char *);
-static void process_cmds();
+static void process_cmds(void);
 static int closcmd(int ,unsigned char *parsv[]);
 static int dispcmd(int ,unsigned char *parsv[]);
 static int eovcmd(int ,unsigned char *parsv[]);
@@ -20,20 +26,29 @@ static int lpcmd(int ,unsigned char *parsv[]);
 static int opencmd(int ,unsigned char *parsv[]);
 static int trancmd(int ,unsigned char *parsv[]);
 static int warncmd(int ,unsigned char *parsv[]);
-static char copywrite[640]  = "Copyright (c) 1992-1997 Regents of the University of Michigan. All rights reserved. Redistribution and use in source and binary forms are permitted provided that this notice is preserved and that due credit is given to the University of Michigan at Ann Arbor. The name of the University may not be used to endorse or promote products derived from this software without specific prior written permission. This software is provided ``as is'' without express or implied warranty.";
-void unvattn(int);
-extern READ_RTN fmtstring(unsigned char *, struct buf_ctl *);
-char var_name[256];
-extern int warn;
-extern int infile_recording_mode;
-extern int outfile_recording_mode;
-extern char *expirefunction(struct deviceinfo *,char *);
-static char version[10]="1.1";
- 
-void main (int argc, char *argv[])
+static int copycmd(int parsc,unsigned char *parsv[]);
+static int datecmd(int parsc,unsigned char *parsv[]);
+static int ditocmd(int parsc,unsigned char *parsv[]);
+static int duplcmd(int parsc,unsigned char *parsv[]);
+static int exprcmd(int parsc,unsigned char *parsv[]);
+static int filecmd(int parsc,unsigned char *parsv[]);
+static int initcmd(int parsc,unsigned char *parsv[]);
+static int prefcmd(int parsc,unsigned char *parsv[]);
+static int posncmd(int parsc,unsigned char *parsv[]);
+static int recmcmd(int parsc,unsigned char *parsv[]);
+static int termcmd(int parsc,unsigned char *parsv[]);
+static int rewcmd(int parsc,unsigned char *parsv[]);
+
+static char UNUSED(copywrite[640])  = "Copyright (c) 1992-1997 Regents of the University of Michigan. All rights reserved. Redistribution and use in source and binary forms are permitted provided that this notice is preserved and that due credit is given to the University of Michigan at Ann Arbor. The name of the University may not be used to endorse or promote products derived from this software without specific prior written permission. This software is provided ``as is'' without express or implied warranty.";
+static void unvattn(int);
+static char var_name[256];
+static char version[10]="1.2";
+
+
+
+int main (int argc, char *argv[])
  {
-   int  i,j,cmd_len;
-   char *rc;
+   int  i,j;
    static char *drive_name="\0";
    
    tapeinit();
@@ -53,16 +68,20 @@ void main (int argc, char *argv[])
      else {fprintf(stderr,"`%s' is not valid\n",argv[i]);exit (1);}
     }
    if (drive_name[0] != '\0')
-    if (tpopen(INPUT,drive_name) != 1) exit (2);
+    if (tpopen(INPUT,(unsigned char *)drive_name,0,0) != 1) exit (2);
    process_cmds();
+   
+   return 0;
   }
-static void process_cmds()
+
+
+static void process_cmds(void)
  {
    int  i,cmd_len;
    char *rc;
-   void (*old_handler)();
+   void (*old_handler)(int);
 
-#if SYSTEM == OS4
+#if SYSTEM == OS4 || SYSTEM == DARWIN || SYSTEM == MSVC || SYSTEM == CYGWIN
    old_handler = signal(SIGINT,&unvattn);
 #else
    old_handler = sigset(SIGINT,&unvattn);
@@ -73,10 +92,10 @@ static void process_cmds()
    {
     unsigned char command[258];
     unsigned char *parsv[40];
-    char *message_area;
     int parsc;
 
     printf("\nPlease Enter Request\n");
+    fflush(NULL);
     rc=fgets((char *)command,256,stdin);
     if (rc==NULL) break; 
     if (command[0] == '$')
@@ -137,9 +156,17 @@ static void process_cmds()
      warncmd(parsc,parsv);
     else fprintf(stderr,"Request not recognized - reenter.\n");
    }
+
+#if SYSTEM == OS4 || SYSTEM == DARWIN || SYSTEM == MSVC || SYSTEM == CYGWIN
+   signal(SIGINT,old_handler);
+#else
+   sigset(SIGINT,old_handler);
+#endif
   tapeclose();
   exit (1);
  }
+
+
 static int cmdparse(unsigned char *command,unsigned char *parsv[])
  {
   int i,offset=0;
@@ -149,8 +176,25 @@ static int cmdparse(unsigned char *command,unsigned char *parsv[])
    {
     str_posn=strspn((char *)&command[offset]," ");
     parsv[i]=&command[str_posn+offset];
-    len=strcspn((char *)parsv[i]," \n");
-    parsv[i][len]='\0';
+    if (parsv[i][0] == '\'' || parsv[i][0] == '"')
+     {
+      char * endquote = strchr(&((char *)parsv[i])[1], *((char *)parsv[i]));
+      if (endquote)
+       {
+        len = endquote + 1 - (char *)parsv[i];
+        *(endquote + 1) = '\0';
+       }
+      else
+       {
+        len=strcspn((char *)parsv[i],"\n");
+        parsv[i][len]='\0';
+       }
+     }
+    else
+     {
+      len=strcspn((char *)parsv[i]," \n");
+      parsv[i][len]='\0';
+     }
     if (len==0)
      {
       if (i>0) i--;
@@ -160,7 +204,9 @@ static int cmdparse(unsigned char *command,unsigned char *parsv[])
    }
   return (0);
  }
-void unvattn(int signum)
+
+
+static void unvattn(int signum)
  {
   fprintf(stderr,"\n attention\n"); 
 #if SYSTEM == OS4
@@ -168,43 +214,61 @@ void unvattn(int signum)
 #endif
   process_cmds();
  }
-int append_normal_message(char *message,int where)
+
+
+void append_normal_message(char *message,int where)
  {
   fprintf(stdout,"%s",message);
  } 
-int issue_error_message(char *message)
+
+
+void issue_error_message(char *message)
  {
   fprintf(stderr,"%s",message);
  } 
-int issue_ferror_message(char *message)
+
+
+void issue_ferror_message(char *message)
  {
   fprintf(stderr,"%s",message);
+  /* Callers expect us to return 
   exit(1);
+  */
  } 
-int issue_warning_message(char *message)
+
+
+void issue_warning_message(char *message)
  {
   fprintf(stderr,"%s",message);
  } 
-int postblocks(int num) 
+
+
+void postblocks(int num) 
  {
   if (num !=0) fprintf(stderr,"  %d blocks processed\n",num);
  }
-int postbytes(double num) 
+
+
+void postbytes(double num) 
  {
   if (num !=0) fprintf(stderr,"  %0.0f bytes processed\n",num);
  }
+
+
 char *getAnotherFile(char *filename)
  {
   char *rc, *ret_name;
 
   fprintf(stderr," Warning file %s already exists.\n",filename);
   fprintf(stderr," Enter replacement name, hit return to overwrite, or generate \n  an end of file to cancel\n");
-  ret_name=malloc(258);
+  ret_name = (char *)malloc(258);
   rc = fgets(ret_name,256,stdin);
   if (rc != NULL) return(ret_name);
   free(ret_name);
   return (NULL); 
  }
+
+
 #define val_io(function)                                                       \
   if (tape==NULL)                          /* user specify input or output? */ \
    {                                                                           \
@@ -229,6 +293,8 @@ char *getAnotherFile(char *filename)
     fprintf(stderr,"%s device is not defined\n",dev);                          \
     return (-1);                         /* and return */                      \
    }
+
+
 #define get_number(number,value,min)                                           \
    {                                                                           \
     len=strlen(number);                        /* yep get length of number */  \
@@ -239,7 +305,9 @@ char *getAnotherFile(char *filename)
       fprintf(stderr," `%s' is illegal\n",parsv[i]); /* no tell user */        \
       return (-1);                                                             \
      }                                         /* return */                    \
-   } 
+   }
+
+ 
 #define get_range(start,end);                                                  \
   {                                                                            \
    char *minus;                                                                \
@@ -271,6 +339,8 @@ char *getAnotherFile(char *filename)
    else end=start;                            /* end and start the same */     \
    if (start>end) {j=end; end=start; start=j;} /* go from low to high */       \
   }
+
+
 static int closcmd(int parsc,unsigned char *parsv[]) 
  {
   struct deviceinfo *tape;
@@ -295,20 +365,26 @@ static int closcmd(int parsc,unsigned char *parsv[])
   val_io("Close");                              /* validate input/output spec */
   return (closetape(tape));                     /* do it */
  }
+
+
 static int copycmd(int parsc,unsigned char *parsv[])
  {
   struct deviceinfo *idevice, *odevice;
   struct buf_ctl  input_ctl, output_ctl;
-  int i, j, len;
+  unsigned int j, len;
+  int i;
   char *equal, *opar, *cpar; 
  
+  memset(&input_ctl, 0, sizeof(input_ctl));
+  memset(&output_ctl, 0, sizeof(output_ctl));
+  
   idevice=odevice=NULL;  /* input/output devices not defined */
   input_ctl.iofrom=output_ctl.iofrom=-1;
   input_ctl.translate=-1; /* translate mode not set */
   output_ctl.translate=-1; /* translate mode not set */
   input_ctl.path=NULL;  /* no pathname for input given */
   output_ctl.path=NULL; /* no pathname for output given */
-  output_ctl.warn=warn;
+  output_ctl.warn=show_warnings;
   input_ctl.linemode=0;           /* don't write out line numbers */
   input_ctl.start_file=input_ctl.end_file=0;   /* copy from current position */
   input_ctl.trtable=NULL;         /* no overriding translate mode */
@@ -343,7 +419,7 @@ static int copycmd(int parsc,unsigned char *parsv[])
         output_ctl.iofrom=2;                  /* copy to terminal */
       else if (len>3 && strncmp((char *)var_name,"SCREEN",len)==0) 
         output_ctl.iofrom=2;                  /* copy to terminal */
-      else if (strncmp((char *)var_name,"OUTPUT",4)==0)/*use default out tape?*/
+      else if (len>3 && strncmp((char *)var_name,"OUTPUT",len)==0)/*use default out tape?*/
        output_ctl.iofrom=1;                    /* set defaut output device */
       else if (opar != NULL && cpar != NULL) /* where parens used */
        {
@@ -358,7 +434,7 @@ static int copycmd(int parsc,unsigned char *parsv[])
           else if (strcmp(&*(opar+1),"NONE")==0) input_ctl.linemode=0; /* no line #? */
           else goto badpar;                             /* don't recognize */
          } 
-        else if (len>3 && strcmp((char *)var_name,"TRANSLATE")==0) /* trans? */
+        else if (len>3 && strncmp((char *)var_name,"TRANSLATE",len)==0) /* trans? */
          {
           if (strcmp(&*(opar+1),"MTS")==0)
            {input_ctl.trtable=EBCASC; output_ctl.otrtable=ASCEBC;} /* set transtable new */
@@ -454,6 +530,8 @@ static int copycmd(int parsc,unsigned char *parsv[])
    }
   return(copyfunction(&input_ctl,&output_ctl,OFF));
  }
+
+
 static int datecmd(int parsc,unsigned char *parsv[])
  {
   struct deviceinfo *tape;
@@ -488,12 +566,15 @@ static int datecmd(int parsc,unsigned char *parsv[])
    }
   return (0);
  }
+
+
 static int dispcmd(int parsc,unsigned char *parsv[])
  {
   struct deviceinfo *tape;
   char *equal;
   int rec, length;
-  int i,j,len;
+  unsigned int j,len;
+  int i;
   char *path;
   struct deviceinfo file;
    
@@ -560,11 +641,13 @@ static int dispcmd(int parsc,unsigned char *parsv[])
    }
   return(displayfunction(tape,rec,length,1,1,1));
  }
+
+
 static int ditocmd(int parsc,unsigned char *parsv[])
  {
   char *tapeowner, *tapevol, *equal;
   unsigned char *tapename;
-  int type,i,j,len,rc;
+  int i,j,len;
  
   tapeowner="";                        /* default tape owner */
   tapevol=NULL;                        /* no volume given */
@@ -605,22 +688,28 @@ static int ditocmd(int parsc,unsigned char *parsv[])
     fprintf(stderr,"Input tape must be defined.\n");
     return (-1);
    }
-  return(dittofunction(tapename));
+  return(dittofunction((char *)tapename, 0));
  }
+
+
 static int duplcmd(int parsc,unsigned char *parsv[])
  {
   struct deviceinfo *idevice, *odevice;
   struct buf_ctl  input_ctl, output_ctl;
-  int i, j, len;
-  char *equal, *opar, *cpar; 
+  unsigned int j, len;
+  int i;
+  char *equal; 
  
+  memset(&input_ctl, 0, sizeof(input_ctl));
+  memset(&output_ctl, 0, sizeof(output_ctl));
+  
   idevice=odevice=NULL;  /* input/output devices not defined */
   input_ctl.iofrom=output_ctl.iofrom=-1;
   input_ctl.translate=-1; /* translate mode not set */
   output_ctl.translate=-1; /* translate mode not set */
   input_ctl.path=NULL;  /* no pathname for input given */
   output_ctl.path=NULL; /* no pathname for output given */
-  output_ctl.warn=warn;
+  output_ctl.warn=show_warnings;
   input_ctl.linemode=0;           /* don't write out line numbers */
   input_ctl.start_file=input_ctl.end_file=0;   /* copy from current position */
   input_ctl.trtable=NULL;         /* no overriding translate mode */
@@ -644,7 +733,6 @@ static int duplcmd(int parsc,unsigned char *parsv[])
       else if (strcmp((char *)var_name,"NOWARN")==0) output_ctl.warn=OFF;/*or off*/
       else                                     /* don't recognize this */
        {
-       badpar:
         fprintf(stderr," `%s' is an invalid parameter\n",parsv[i]);/*tell user*/
         return (-1);
        }
@@ -676,15 +764,15 @@ static int duplcmd(int parsc,unsigned char *parsv[])
   if (tapei.lp == OFF)
    {
     if (tapeo.lp == ON)
-     if (tapeo.tape_type != UNLABELED)
+     if (tapeo.tape_type != UNLABELED && tapeo.tape_type != VLO_LABEL)
       {
-       fprintf(stderr,"Tape with LP = OFF can only be duplicated to an unlabeled tape or an lp = OFF tape\n");
+       fprintf(stderr,"Tape with LP = OFF can only be duplicated to an unlabeled or VLO tape or an lp = OFF tape\n");
        return -1;
       }
    }
   else if (tapei.tape_type == IBM_LABEL)  
    {
-    if (tapeo.tape_type == IBM_LABEL || tapeo.tape_type == UNLABELED);
+    if (tapeo.tape_type == IBM_LABEL || tapeo.tape_type == UNLABELED) ;
     else
      {
       fprintf(stderr,"IBM labeled tape can only be duplicated to an unlabeled tape or an IBM labeled tape\n");
@@ -693,7 +781,7 @@ static int duplcmd(int parsc,unsigned char *parsv[])
    }
   else if (tapei.tape_type == ANSI_LABEL)
    {
-    if (tapeo.tape_type == ANSI_LABEL || tapeo.tape_type == UNLABELED);
+    if (tapeo.tape_type == ANSI_LABEL || tapeo.tape_type == UNLABELED) ;
     else
      {
       fprintf(stderr,"ANSI labeled tape can only be duplicated to an unlabeled tape or an ANSI labeled tape\n");
@@ -702,18 +790,18 @@ static int duplcmd(int parsc,unsigned char *parsv[])
    }
   else if (tapei.tape_type == TOS_LABEL)
    {
-    if (tapeo.tape_type == TOS_LABEL || tapeo.tape_type == UNLABELED);
+    if (tapeo.tape_type == TOS_LABEL || tapeo.tape_type == UNLABELED) ;
     else
      {
       fprintf(stderr,"TOS labeled tape can only be duplicated to an unlabeled tape or a TOS labeled tape\n");
       return -1;
      }
    }    
-  else if (tapei.tape_type == UNLABELED)
+  else if (tapei.tape_type == UNLABELED || tapei.tape_type == VLO_LABEL)
    {
-    if (tapeo.tape_type != UNLABELED) 
+    if (tapeo.tape_type != UNLABELED && tapeo.tape_type != VLO_LABEL) 
      {
-      fprintf(stderr,"Unlabeled tape can only be duplicated to an unlabeled tape\n");
+      fprintf(stderr,"Unlabeled tape can only be duplicated to an unlabeled or VLO tape\n");
       return -1;
      }
    }
@@ -726,6 +814,8 @@ static int duplcmd(int parsc,unsigned char *parsv[])
   output_ctl.iofrom=1;                    /* set defaut output device */
   return(copyfunction(&input_ctl,&output_ctl,ON));
  }
+
+
 static int eovcmd(int parsc,unsigned char *parsv[])
  {
   struct deviceinfo *tape;
@@ -760,13 +850,13 @@ static int eovcmd(int parsc,unsigned char *parsv[])
   tape->eov=eov;                             /* set and return */
   return (0);
  }
+
+
 static int exprcmd(int parsc,unsigned char *parsv[])
  {
   struct deviceinfo *tape;
   unsigned char *month, *day, *year;
   char *rc;
-  struct tm tm, *tm2;
-  time_t now;
   int len, i, j, reset;
 
   tape=NULL;                                  /* no tape specified yet */
@@ -808,6 +898,8 @@ static int exprcmd(int parsc,unsigned char *parsv[])
   if (rc == NULL) return -1;
   return(1);
  }
+
+
 static int filecmd(int parsc,unsigned char *parsv[])
  {
   struct deviceinfo *tape;
@@ -828,7 +920,6 @@ static int filecmd(int parsc,unsigned char *parsv[])
     else if (file_name==NULL) file_name=parsv[i]; /* set file name */
     else                                  /* woops - don't know what to do */
      {
-      badpar:
       fprintf(stderr," `%s' is illegal\n",parsv[i]);
       return (-1);
      }
@@ -863,12 +954,16 @@ static int filecmd(int parsc,unsigned char *parsv[])
   tape->newfile_name=ON;                    /* mark filename has been set */
   return (0);
  }
+
+
 static int formcmd(int parsc,unsigned char *parsv[])
  {
   struct deviceinfo *tape;
   struct buf_ctl buf_ctl;
   int i,j,len;
  
+  memset(&buf_ctl, 0, sizeof(buf_ctl));
+  
   tape=NULL;                               /* no input/output tape specified */
   buf_ctl.read_rtn=NULL;                  /* no format string specified */
   for (i=1; i<= parsc; i++)                /* cycle though pars */
@@ -896,26 +991,47 @@ static int formcmd(int parsc,unsigned char *parsv[])
     fprintf(stderr,"This command does nothing\n");
     return (0);
    }
-  return (setformat(tape,buf_ctl));
+  return (setformat(tape, &buf_ctl));
  }
+
+
 static int initcmd(int parsc,unsigned char *parsv[])
  {
   char *tapeowner, *tapevol, *equal;
   unsigned char *tapename;
-  int type,i,j,len;
+  int type=0,i,j,len;
+  int tape_type;
  
   tapeowner="";                        /* default tape owner */
   tapevol=NULL;                        /* no volume given */
   tapename=NULL;                       /* no file/device name given */
+  tape_type = DEV_AWSTAPE;             /* Assume AWStape format, not FakeTape */ 
   for (i=1; i<= parsc; i++)            /* cycle through pars */
    {
     len=strlen((char *)parsv[i]);      /* length of parameter */
     for (j=0;j<len;j++) var_name[j]=toupper(parsv[i][j]); /* copy and trans */
     var_name[len]='\0';                /* terminate */
     equal=strpbrk((char *)var_name,"="); /* split into keyword/value */
-    if (equal==NULL && tapename==NULL) 
-     {tapename=parsv[i]; continue;}    /* this must the the device name */
-    else if (equal == NULL) goto parerr; /* something fishy going on */
+    if (equal == NULL)
+     {
+      /* No equal sign in parameter */
+      if (len > 3 && strncmp((char *)var_name, "FAKETAPE", len) == 0)
+       {
+        tape_type = DEV_FAKETAPE;
+       }
+      else if (len > 2 && strncmp((char *)var_name, "AWSTAPE", len) == 0)
+       {
+        tape_type = DEV_AWSTAPE;
+       }
+      else if (tapename == NULL)
+       {
+        tapename = parsv[i];
+       }
+      else
+       goto parerr;
+      continue;
+     }
+    
     *equal='\0';                        /* terminate keyword */ 
     equal=strpbrk((char *)parsv[i],"="); /* point to prestart of value */
     len=strlen((char *)var_name);
@@ -928,6 +1044,11 @@ static int initcmd(int parsc,unsigned char *parsv[])
      {
       tapevol=equal+1;                  /* set volume name specification */
       type=IBM_LABEL;                   /* mark label type */
+     }
+    else if (len>5 && strncmp((char *)var_name,"VLOVOLUME",len) == 0)
+     {
+      tapevol=equal+1;
+      type=VLO_LABEL;
      }
     else if (len>6 && strncmp((char *)var_name,"ANSIVOLUME",len) == 0) 
      {
@@ -1010,26 +1131,28 @@ static int initcmd(int parsc,unsigned char *parsv[])
      for (i=0; i<len; i++) tapeowner[i]=toupper(tapeowner[i]);/*trans to upper*/
     if (len>14) tapeowner[14]='\0'; /* max length of owner name ansi label */
     strcpy(tapeo.owner,tapeowner);
-    if (type==IBM_LABEL || type==TOS_LABEL) /* IBM or TOS labeled? */
+    if (type==IBM_LABEL || type==TOS_LABEL || type==VLO_LABEL) /* IBM or TOS labeled? */
      tapeo.owner[10]='\0';          /* max length ibm label */
     tapeo.label=type;               /* set label type */
    }
-  tpopen(OUTPUT,tapename);          /* open and init tape */
+  /* If this is a real tape this value will be reset in tpopen, but if it's
+     a simulated tape then we need to tell tpopen what type of simulated
+     tape to create. */
+  tapeo.drive_type = tape_type;
+  tpopen(OUTPUT,tapename,0,0);      /* open and init tape */
   tapeo.label=OFF;                  /* disarm labelling */
   return (0);
  }
+
+
 static int listcmd(int parsc,unsigned char *parsv[])
  {
   struct deviceinfo *tape;   
-  struct buf_ctl buf_ctl; 
-  int file_num, len, i, j,offset, doclen, document_sw;
-  double bytes;
-  int records, start_file, end_file;
-  char type [20];
-  unsigned char buffer[45];
-  unsigned char *file_name;
-  char *doc;
-  unsigned char docsw, seg_len;
+  unsigned int len, j;
+  int i;
+  int document_sw;
+  int start_file, end_file;
+  unsigned char docsw;
   int date_sw;
   int notify;
   
@@ -1075,9 +1198,10 @@ static int listcmd(int parsc,unsigned char *parsv[])
   document_sw=docsw;
   return (listfunction(tape,start_file,end_file,document_sw,date_sw,notify));
  }
+
+
 static int lpcmd(int parsc,unsigned char *parsv[])
  {
-  struct tapestats tapes;
   int i, j, lp, len;
   struct deviceinfo *tape;
 
@@ -1102,32 +1226,56 @@ static int lpcmd(int parsc,unsigned char *parsv[])
    }
   if (tape->lp == lp) return (0);          /* already set right */
   return (lpfunction(tape,lp));
- }    
+ }
+
+    
 static int opencmd(int parsc,unsigned char *parsv[]) 
  {
   struct deviceinfo *tape;
-  int i, j, len,rc, open_type;
+  int i, j, len,rc, open_type,is_vlo,not_fs;
   unsigned char *device_name;
 
   tape=NULL;                                    /* no tape spedified */
   device_name=NULL;                             /* no tape/file specified */
+  is_vlo=0;                                     /* Not a VLO tape */
+  not_fs=0;
   for (i=1; i <= parsc; i++)                    /* cycle through pars */
    {
     len=strlen((char *)parsv[i]);               /* length of parameter */
     for (j=0; j <= len; j++) var_name[j]=toupper(parsv[i][j]); /*copy and tran*/
     var_name[len]='\0';                         /* terminate */
-    if (tape==NULL)                             /* input or output not spec? */
+    if (strcmp((char *)var_name,"VLO") == 0)    /* VLO tape? */
      {
-      if (strcmp((char *)var_name,"INPUT") == 0) tape=&tapei; /* set input */
-      else if (strcmp((char *)var_name,"OUTPUT") == 0) tape=&tapeo;/*set output*/ 
-      if (tape != NULL) continue;               /* don't use as device name */
+      is_vlo = 1;
      }
-    if (device_name==NULL) device_name=parsv[i]; /* set file/device name */
-    else                                        /* oops */
+    else if (len > 4 && strncmp((char *)var_name,"NOTFSTAPE",len) == 0)
      {
-      fprintf(stderr,"open `%s' or `%s'?\n",device_name,parsv[i]);
-      return (-1);
-     } 
+      not_fs = 1;
+     }
+    else 
+    {
+      if (tape==NULL)                        /* input or output not spec? */
+      {
+        if (strcmp((char *)var_name,"INPUT") == 0) tape=&tapei; /* set input */
+        else if (strcmp((char *)var_name,"OUTPUT") == 0) tape=&tapeo;/*set output*/ 
+        if (tape != NULL) continue;               /* don't use as device name */
+      }
+      if (device_name==NULL) 
+       {
+        device_name=parsv[i];                     /* set file/device name */
+        if ((device_name[0] == '\'' || device_name[0] == '"') &&
+            device_name[strlen((char *)device_name)-1] == device_name[0])
+         {
+          device_name[strlen((char *)device_name)-1] = '\0';
+          device_name += 1;
+         }
+       }
+      else                                        /* oops */
+      {
+        fprintf(stderr,"open `%s' or `%s'?\n",device_name,parsv[i]);
+        return (-1);
+      } 
+    }
    }
   if (device_name==NULL)             /* file or device name must be specified */
    {
@@ -1139,22 +1287,28 @@ static int opencmd(int parsc,unsigned char *parsv[])
   if (tape==NULL) return (-1);       /* oops still dont have a spec */ 
   open_type=INPUT;
   if (tape==&tapeo) open_type=OUTPUT;
-  rc = tpopen(open_type,device_name);     /* open device */
-  if (rc < 1)                        /* alread open? */
+  tape->drive_type = 0;              /* Don't know the type if simulated tape */
+  rc = tpopen(open_type,device_name,is_vlo,not_fs); /* open device */
+  if (rc < 1)                        /* already open? */
    {
     if (rc == 0) fprintf(stderr,"`%s' is already open\n",device_name);
     return (-1);
    }
   return (0);
  }
+
+
 static int prefcmd(int parsc,unsigned char *parsv[]) 
  {
   struct deviceinfo *tape;
   struct buf_ctl buf_ctl;
-  int i, j, len;
+  unsigned int j, len;
+  int i;
   char *equal;
   int blkpfx,blkpfxl,blkpfxs;
 
+  memset(&buf_ctl, 0, sizeof(buf_ctl));
+  
   tape=NULL;                                   /* no tape specified */
   blkpfx=blkpfxl=blkpfxs=-1;                   /* no pars */
   for (i=1; i <= parsc; i++)                   /* cycle though pars */
@@ -1205,12 +1359,17 @@ static int prefcmd(int parsc,unsigned char *parsv[])
    {
     return(blkpfxfunction(tape,&buf_ctl,blkpfx,blkpfxl));
    }
+  return 0;
  }
+
+
 static int posncmd(int parsc,unsigned char *parsv[]) 
  {
   struct tapestats tapes;
   struct deviceinfo *tape;
-  int i, j, position, len;
+  unsigned int j, len;
+  int i;
+  int position=0;
 
   tape=NULL;                                 /* no control block yet */
   if (parsc == 0) {fprintf(stderr,"This does nothing\n"); return(0);} /*easy eh?*/
@@ -1229,7 +1388,6 @@ static int posncmd(int parsc,unsigned char *parsv[])
      {get_number((char *)var_name,position,1)} /*get requested logical file  #*/
     else
      {
-      badpar:                              /* so sorry but I don't recgognize */
       fprintf(stderr," `%s' is illegal\n",parsv[i]); /* this */
       return(-1);                              /* done */
      }
@@ -1247,6 +1405,8 @@ static int posncmd(int parsc,unsigned char *parsv[])
    }  
   return(0);
  }
+
+
 static int recmcmd(int parsc,unsigned char *parsv[])
  {
   int len, i, j;
@@ -1277,9 +1437,10 @@ static int recmcmd(int parsc,unsigned char *parsv[])
    fprintf(stderr,"This command does nothing\n");
   return (0);
  }
+
+
 static int rewcmd(int parsc,unsigned char *parsv[])
  {
-  struct tapestats tapes;
   int i, j, lp, len;
   struct deviceinfo *tape;
 
@@ -1297,11 +1458,12 @@ static int rewcmd(int parsc,unsigned char *parsv[])
   val_io("Rewind");      /*validate input/output spec */
   return (rewindfunction(tape));
  }
+
+
 static int termcmd(int parsc,unsigned char *parsv[])
  {
-  struct tapestats tapes;
-  int i, j, lp, len;
-  int position;
+  unsigned int j, len;
+  int i, position, lp;
   struct deviceinfo *tape;
 
   tape=NULL;                                /* no tape specified */
@@ -1337,6 +1499,8 @@ static int termcmd(int parsc,unsigned char *parsv[])
    }
   return (terminatefunction(tape,position));
  }
+
+
 static int trancmd(int parsc,unsigned char *parsv[])
  {
   int len, i, j;
@@ -1395,6 +1559,8 @@ static int trancmd(int parsc,unsigned char *parsv[])
   else fprintf(stderr,"This command does nothing\n");
   return (0);
  }
+
+
 static int warncmd(int parsc,unsigned char *parsv[])
  {
   int len, i, j;
@@ -1409,12 +1575,14 @@ static int warncmd(int parsc,unsigned char *parsv[])
     len=strlen((char *)parsv[i]);            /* length of parameter */
     for (j=0;j<len;j++) var_name[j]=toupper(parsv[i][j]); /* copy and trans */
     var_name[len]='\0';                     /* terminate */
-    if (strcmp((char *)var_name,"OFF") == 0) warn=OFF; /* disable warnings */
-    else if (strcmp((char *)var_name,"ON") == 0) warn=ON; /* enable warnings */
+    if (strcmp((char *)var_name,"OFF") == 0) show_warnings=OFF; /* disable warnings */
+    else if (strcmp((char *)var_name,"ON") == 0) show_warnings=ON; /* enable warnings */
     else {fprintf(stderr,"`%s' is illegal\n",parsv[i]);return(-1);} /* oops */
    }
   return(0);
  }
+
+
 static struct deviceinfo *onwhat(char *start_of_msg)
  {
   char * rc;
@@ -1433,6 +1601,8 @@ static struct deviceinfo *onwhat(char *start_of_msg)
   fprintf(stderr,"Command ignored.\n");       /* no response - Ignore command */
   return(NULL);                                 /* return no response */
  }
-void yield_()
+
+
+void yield_(void)
  {
  }

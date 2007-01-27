@@ -1,3 +1,6 @@
+#ifndef _TRANSLATE_H_
+#define _TRANSLATE_H_
+
 /************************************************************* 
 *                                                            * 
 *      New ISO to EBCDIC table : name ASCEBC                 *
@@ -1119,3 +1122,5 @@ unsigned char ASCMTS[256]={
   /* ITOMTS_FD */ 0XFE,  /* small y with acute accent  */
   /* ITOMTS_FE */ 0XBE,  /* small thorn,   Icelandic  */
   /* ITOMTS_FF */ 0XFF}; /* small y diaeresis  */
+
+#endif /* _TRANSLATE_H_ */

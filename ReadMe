@@ -1,0 +1,20 @@
+This directory contains version 1.2 of lbltp, a command line program to read and write tapes, both real and virtual, on several platforms.  There are binaries for Windows and Mac OS X included.  It is also possible to build it on various other Unix based platforms.
+
+In addition to a large number of internal changes necessary to get it to build without warnings on various platforms and compilers, these externally visible changes have been made to lbltp between version 1.1 and 1.2:
+
+1. Better error checking of FS tapes including checking the checksum on files that have a checksum.
+
+2. The file containing a virtual tape is truncated when the tape is initialized.
+
+3. Files containing virtual tapes are opened in binary mode so line ending characters won't cause trouble.  This is particularly a problem on Windows.
+
+4. Better handling of VLO tapes.  You can specify that a tape is a VLO tape when it is opened by using the VLOVOL parameter to give the VOLID for the tape.
+
+5. Support for AWSTape format virtual tapes.  They will be recognized automatically when opened and can be created using the AWSTAPE parameter on the initialize command.  This is actually the default, to initialize a FAKETAPE format virtual tape as supported by lbltp version 1.1, use the FAKETAPE parameter on initialize.
+
+6. The parameter that specifies the path to a virtual tape on an open command can be quoted so it can contain blanks and other delimiters.  The initialize command was not changed to allow quoted paths.
+
+7. The open command has a parameter "NOTFSTAPE" which specifies that the tape should not be treated as an FS tape even if it looks like one.  This lets you copy FS tapes with care.  You can't add or delete files from an FS tape this way, but it lets you change the format between FAKETAPE and AWSTape.
+
+8. It works on Mac OS X (i.e. Darwin) and Windows.  Neither platform supports real tapes, only virtual tapes are supported.  The Darwin version builds with either CodeWarrior 9 or XCode 1.5 (there is also a make file to build it directly with gcc).  The Windows version builds with either MSVC 7.1 or Cygwin.
+

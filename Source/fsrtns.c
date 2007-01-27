@@ -2,81 +2,87 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+
 #include "lbltp.h"
-#include "lblextrn.h"
+
+#include "vars.h"
+#include "fsrtns.h"
+#include "linemode.h"
+#include "machine.h"
+#include "functions.h"
+
+static int checksum(struct deviceinfo *tape, int len, int header);
 
 unsigned char *mts_fsread(struct deviceinfo *taper, struct buf_ctl *buf_ctl) 
   { 
-   int debug, n, len;
-   int header_len, in_len, out_len;
-   size_t this_line_len;
-   char line_num_c[30];
-   int line_index, data_index,line_number;
-   typedef struct data_segment_header
-    {
-     unsigned int more_data:1;
-     unsigned int first_segment:1;
-     unsigned int bit_2:1;
-     unsigned int bit_3:1;
-     unsigned int line_len:12;
-     char line_number[4];
-     unsigned char data[4096];
-    } segment_hdr;
-   segment_hdr *data_segment, segment;
-   union seg_descriptor
-    {
-     unsigned short int seg_len;
-     unsigned char seg_len_char[2];
-    } seglen;
-   static unsigned char filename[33];
-   char  *rc;
-   int i, j, m;
+   segment_hdr data_segment;
+   static unsigned char blanks[18] = { 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 
+   0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40};
    
-   if (taper->rem_len==0)                    /* data to process?  */
+   /* Look for padding added to short records by the MTS tape routines.
+      Records less than 18 bytes long were padded to 18 with EBCDIC blanks. */
+   if (taper->rem_len > 0 && 
+       taper->offset + taper->rem_len <= 18 &&
+       memcmp(&taper->buffer[taper->offset], blanks, taper->rem_len) == 0)
+    /* It's padding, skip it */
+    taper->rem_len = 0;
+     
+   if (taper->rem_len<=0)                    /* data to process?  */
     {
      taper->rem_len= tpread(taper,taper->buffer,32768*2); /* no read next blk */
      if (taper->rem_len== 0) {tpsync(taper); return (NULL);} /* eof? */
      if (taper->rem_len< 0)                  /* tape err? */
       return(tape_err(taper,"Read","MTS/FS",taper->blocks,errno));
-     taper->blocks++;                        /* incr real block count */
-     buf_ctl->blocks++;                      /* incr rel block count */
+     /* If this is the first block in the file, initialize some things */
+     if (buf_ctl->blocks == 0)
+      {
+        buf_ctl->last_line_num = 0x80000000;
+      }
      taper->offset = 0;                      /* point to start of block */
      if (memcmp(&taper->fsheader->header_id, &magic_id, 4) == 0)
       {
+       if (!checksum(taper, taper->rem_len, 0))
+        {
+          issue_error_message("checksum failure for data block\n");
+          return NULL;
+        }
        taper->offset = 12;                   /* unless we have check sum area */
        taper->rem_len-=12;                   /* adjust rem length */
       }
+     taper->blocks++;                        /* incr real block count */
+     buf_ctl->blocks++;                      /* incr rel block count */
     }
-   data_segment = (segment_hdr*)&taper->buffer[taper->offset]; /*point to seg */
-   memcpy(&seglen.seg_len,data_segment,2);  /* length of segment */
-   seglen.seg_len_char[0] &=  0x0f;         /* clear info bits from len */
-   INV_SHORT_INT(seglen.seg_len);           /* invert length if necessary */
-   buf_ctl->seg_len=seglen.seg_len;          /* length of this segment */
-   memcpy(&seglen.seg_len,data_segment,1);   /* info on segment */
-   seglen.seg_len_char[1] = seglen.seg_len_char[0] & 0x80; /* more data bit */
-   seglen.seg_len_char[0] &=  0x40;         /* first segment bit */
-   memcpy(&buf_ctl->line_num,&data_segment->line_number,4); /*get line number */
-   INV_LONG_INT(buf_ctl->line_num);        /* invert line number if necessary */
-   buf_ctl->bufaddr=data_segment->data;      /* point to segment */
-   buf_ctl->eor=0;                           /* set EOR if last segment */
-   if (seglen.seg_len_char[1]==0) buf_ctl->eor=1;
-   buf_ctl->sor=0;
-   if (seglen.seg_len_char[0] != 0) buf_ctl->sor=1; /*set SOR if first segment*/
-   taper->offset+=buf_ctl->seg_len+6;        /* offset of next set */ 
-   taper->rem_len-=(buf_ctl->seg_len+6);     /* update remaining len */
+   memcpy(&data_segment, &taper->buffer[taper->offset], sizeof(data_segment));
+   data_segment.len_and_flags = etohs(data_segment.len_and_flags);
+   buf_ctl->seg_len = data_segment.line_len;
+   buf_ctl->line_num = etohl(data_segment.line_number);
+   buf_ctl->bufaddr=taper->buffer + taper->offset + sizeof(data_segment);      /* point to segment */
+   buf_ctl->eor = data_segment.more_data == 0; /* set EOR if last segment */
+   buf_ctl->sor = data_segment.first_segment;
+   taper->offset+=buf_ctl->seg_len+sizeof(data_segment); /* offset of next set */ 
+   taper->rem_len-=(buf_ctl->seg_len+sizeof(data_segment)); /* update remaining len */
    if (taper->rem_len<0)
     {issue_error_message("ran off end of blk\n"); return NULL;}
+   if (buf_ctl->sor ? buf_ctl->line_num <= buf_ctl->last_line_num :
+         buf_ctl->line_num != buf_ctl->last_line_num)
+    {
+      issue_error_message("line numbers out of order\n"); 
+      return NULL;
+    }
+   buf_ctl->last_line_num = buf_ctl->line_num;
    return (buf_ctl->bufaddr);                /* return segment */
   } 
-int mts_fswrite(struct deviceinfo *device,char *buf,unsigned int len)
+  
+int mts_fswrite(struct deviceinfo *device, const unsigned char *buf,unsigned int len)
  {
   fprintf(stderr,"Writting of FS tapes is not supported.");
   exit (1);
  }
+ 
 extern int getfsname(struct deviceinfo *tape)
  {
   struct tapestats tapes;
-  int len,i,date;
+  int len=0,i,date;
   char date_c[7];
   static char month[12][5] = {{"JAN."},
                                     {"FEB."},
@@ -92,7 +98,7 @@ extern int getfsname(struct deviceinfo *tape)
                                     {"DEC."}};
   static int month_n[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
 
-  tape->offset=tape->rem_len=tape->blocks=0; /* init these fields */
+  tape->offset=tape->rem_len=0;              /* init these fields */
   tapestatus(tape,&tapes);                   /* get info on tape */
   if (tapes.mt_blkno==0)                     /* at start of data? */
    { 
@@ -108,8 +114,14 @@ extern int getfsname(struct deviceinfo *tape)
       return (1);                            /* return */
      }
     if (tape->fsheader !=NULL) free(tape->fsheader); /* free old hdr if nec */
-    tape->fsheader=malloc(len);              /* where new header goes */
+    tape->fsheader=(struct fs_header *)malloc(len);              /* where new header goes */
     memcpy(tape->fsheader,tape->buffer,len); /* allocate new header */
+    tape->blocks=0;                    /* Header is block zero in the checksum */
+    if (memcmp(&tape->fsheader->header_id, &magic_id, 4) == 0 &&
+        !checksum(tape, len, 1))
+      {
+        issue_error_message("checksum failure for header\n");
+      }
     for (i=0;i<32;i++)                 /* copy and translate fs file name */
      tape->fsheader->file_name[i]=EBCASC[tape->fsheader->file_name[i]];
     for (i=0;i<39;i++)                 /* copy and translate fs create date */
@@ -153,15 +165,62 @@ extern int getfsname(struct deviceinfo *tape)
       tape->trtable=EBCASC;
       if (tape==&tapeo) tape->otrtable=ASCEBC;
      }
-    memcpy(&version,&tape->fsheader->version,2); /* set FS version no */
-    INV_SHORT_INT(version);                 /* invert if necessary */
+    version = etohs(tape->fsheader->version);  /* set FS version no */
     tape->version=version;
     i=tape->fsheader->docsw;        /* have a DOC field? */
     if (i == 255 ) 
      {
-      tape->doc_len=(sizeof *tape->fsheader) - 4096; /* length of doc field */
+      tape->doc_len = len - ((sizeof *tape->fsheader) - 4096); /* length of doc field */
      }
     else tape->doc_len=0;
    }
   return (0);
  }
+
+int checksum(struct deviceinfo *tape, int len, int header)
+ {
+  fs_checksum *cksum_info;
+  unsigned long save_checksum, checksum;
+  int padlen, i;
+  
+  if (header)
+   {
+    struct fs_header *hdr;
+    hdr = (struct fs_header *) tape->buffer;
+    cksum_info = (fs_checksum *) hdr->doc;
+   }
+  else
+   {
+    cksum_info = (fs_checksum *) tape->buffer;
+   }
+  
+  if (etohs(cksum_info->file_number) != tape->position)
+   return 0;
+   
+  if (etohs(cksum_info->block_number) != tape->blocks)
+   return 0;
+   
+  if (etohs(cksum_info->block_length) != len)
+   return 0;
+  
+  /* Save the checksum and clear it */
+  save_checksum = cksum_info->checksum;
+  cksum_info->checksum = 0;
+  /* Pad the record to a multiple of 4 bytes in length.  This will add 4
+     zeros if the length is a multiple of 4, but it's not worth worrying
+     about that. */
+  padlen = 4 - len % 4;
+  while (padlen > 0)
+   tape->buffer[len - 1 + padlen--] = '\0';
+  checksum = 0;
+  for (i = 0; i < (len + 3) / 4; i++)
+   checksum += etohl(((unsigned long *)tape->buffer)[i]);
+  /* Put the checksum back and check the result */
+  cksum_info->checksum = save_checksum;
+  if (checksum != etohl(save_checksum))
+   return 0;
+   
+  /* All ok. */
+  return 1;
+ }
+ 

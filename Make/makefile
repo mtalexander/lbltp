@@ -1,21 +1,22 @@
-TapeUtil: lbltp TapeUtil.class libTapeUtil.so
-	
-lbltp:	linemode.o functions.o fsrtns.o machine.o 
-	/usr/ucb/cc  linemode.o functions.o fsrtns.o machine.o -o lbltp
-TapeUtil.class: TapeUtil.java 
-	/usr/um/jdk/1.1.5/bin/javac -deprecation -g TapeUtil.java 
-libTapeUtil.so: TapeRoutines.o functions.o fsrtns.o machine.o 
-	ld -G TapeRoutines.o functions.o fsrtns.o machine.o -o libTapeUtil.so
-linemode.o:	linemode.c
-	/usr/ucb/cc -c linemode.c
-functions.o:	functions.c translate.h lbltp.h
-	/usr/ucb/cc -c functions.c -g 
-fsrtns.o:	fsrtns.c translate.h lbltp.h
-	/usr/ucb/cc -c fsrtns.c
-machine.o:	 machine.c lbltp.h
-	/usr/ucb/cc -c machine.c
-TapeRoutines.c:	TapeRoutines.class
-	/usr/um/jdk/1.1.5/bin/javah -jni TapeRoutines
-TapeRoutines.o:	TapeRoutines.c
-	cc -c -I /usr/um/jdk/1.1.5/include  -I /usr/um/jdk/1.1/include/solaris TapeRoutines.c
+# This makefile will build lbltp using the Cygwin tools on Windows.
 
+# This makefile is normally parellel to the source for lbltp, use
+# a VPATH directive to find it.
+VPATH=../Source
+
+CFLAGS=-I/usr/include -Wall -Wno-switch -Winline -Wmissing-prototypes -Wsign-compare -Wundef -Wstrict-prototypes -Wpacked -Wpointer-arith -Wmissing-declarations -Wno-char-subscripts -g -O3
+
+LDFLAGS=
+
+objs=fsrtns.o  functions.o  linemode.o  machine.o  vars.o
+
+all : lbltp
+
+lbltp : $(objs)
+	gcc $(LDFLAGS) -o $@ $(objs)
+
+fsrtns.o : lbltp.h vars.h translate.h fsrtns.h machine.h functions.h
+functions.o : lbltp.h vars.h translate.h functions.h fsrtns.h linemode.h machine.h
+linemode.o : lbltp.h vars.h translate.h linemode.h functions.h machine.h
+machine.o : lbltp.h vars.h translate.h machine.h linemode.h
+vars.o : lbltp.h vars.h translate.h

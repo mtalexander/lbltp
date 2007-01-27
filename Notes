@@ -1,0 +1,85 @@
+Parameters:
+
+   -f tapename          The name of the input tape [optional]
+
+
+Commands:
+
+cl[ose] {input|output}
+    Closes the indicated tape.     
+
+c[opy] [no]tra[nslate] | line | [no]warn | ter[minal] | scr[een] |
+        outp[ut] | line(char|char12|int|none) | 
+        tra[nslate](mts|oldmts|ibm) | files=RANGE | input=name |
+        ri[nput]=name | si[nput]=name | output=name | 
+        records=n | bytes=n | blocks=n | notify=n | 
+        format={mts*fs|FORMATSPEC} | prefix=N[l] | eol={yes|no}
+
+da[techeck] {input|output} {on|off}
+
+di[splay] {input[=path]|output[=path]} | ri[nput]=path | si[nput]=path |
+        blocks=N | length=N |
+
+ditto tapename
+
+    Doesn't work.
+
+du[plicate] [[no]warn] [files=RANGE] | [notify=N]
+	Duplicates the input tape to the output tape, restricted to the
+    indicated range of files if specified.
+
+eo[v] [input|output] on|off
+
+ex[pire] [input|output] [reset|month day year]
+    The month, day, and year parameters are numbers.
+
+fi[lename] [input|output] name
+    name can be a quoted string or a literal no longer than 17
+    characters.
+
+fo[rmat] [input|output] FORMATSPEC
+
+initialize TAPENAME {vol[ume]|ibmvol[ume]|ansivol[ume]|tosvol[ume]}=VOL 
+            [owner=OWNER]
+    TAPENAME is the name of the tape, not input or output.  VOL may be 
+    quoted (in which case it is not upper-cased) or UNLABELED or
+    UNLABELLED.  OWNER may be quoted (in which case it is not upper-
+    cased).
+
+li[st] [input|output] [doc[umentation]] [dat[es]] [files=RANGE] 
+     [notify=N]
+
+lp [input|output] {on|off}
+
+open [input|output] TAPENAME
+
+po[sition] [input|output] [eot|N]
+
+pr[efix] [input|output] [reset] [len[gth]=N[l]]
+    Set the prefix to the to the length given.  Appending "l" to the
+    length means to write a BDW.
+
+rec[ordingmode] [input|output] {record|stream}
+
+rew[ind] [input|output]
+
+sto[p]
+
+str[ucture] is a synomym for recordingmode
+
+terminate [output] {eot|N}
+
+translate [input|output] [on|off] [mts|oldmts|ibm]
+
+warn {on|off}
+
+RANGE is a range of files specified as N or N-M where N and M are either numbers or EOT.
+
+FORMATSPEC is fmt(blklen,reclen) where fmt is one of
+    ds or dbs
+    vs or vbs
+    v or vb
+    fb or fbs
+    f or fs
+    u
+The format specifier, fmt, may be suffixed with a or m to specify ascii or machine carriage control.

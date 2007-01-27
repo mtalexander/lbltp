@@ -5,12 +5,33 @@
 #include <ctype.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include "translate.h"
-#include "lbltp.h"
 #include <signal.h>
 #include <errno.h>
 #include <time.h>
 #include <limits.h>
+
+#include "lbltp.h"
+
+#if SYSTEM != MSVC
+#ifdef __MWERKS__
+/* skip the redefinitioin of user_from_uid in pwd.h */
+#define _XOPEN_SOURCE
+#endif
+#include <pwd.h>
+#ifdef __MWERKS__
+#undef _XOPEN_SOURCE
+#endif
+#include <unistd.h>
+#else 
+#include <io.h>
+#endif
+
+#include "vars.h"
+#include "functions.h"
+#include "fsrtns.h"
+#include "linemode.h"
+#include "machine.h"
+
 #if SYSTEM == OS4 && ! defined SEEK_SET
 #define SEEK_SET 0
 #define SEEK_CUR 1
@@ -54,13 +75,13 @@ struct stream_ctl
   unsigned char buffer[512];
  } ostream;
 
-typedef int (*WRITE_RTN)(struct deviceinfo *,const char *,unsigned);
+/* Internal methods */
 static int rd_nohdr(struct deviceinfo *,int);
 static int rd_ibmhdr(struct deviceinfo *,int);
 static int rd_ansihdr(struct deviceinfo *,int);
 static int rd_toshdr(struct deviceinfo *,int);
-static WRITE_RTN wrt_nohdr();
-static int wrt_notlr();
+static WRITE_RTN wrt_nohdr(struct deviceinfo *tape);
+static int wrt_notlr(struct deviceinfo *tape);
 static WRITE_RTN  wrt_ibmhdr(struct deviceinfo *);
 static int wrt_ibmtlr(struct deviceinfo *);
 static WRITE_RTN  wrt_ansihdr(struct deviceinfo *);
@@ -75,41 +96,26 @@ static unsigned char *u_read(struct deviceinfo *,struct buf_ctl *);
 static unsigned char *ru_read(struct deviceinfo *,struct buf_ctl *);
 static unsigned char *dbs_read(struct deviceinfo *,struct buf_ctl *);
 static unsigned char *db_read(struct deviceinfo *,struct buf_ctl *);
-unsigned char *mts_fsread(struct deviceinfo *, struct buf_ctl *);
 static unsigned char *unix_read(struct deviceinfo *, struct buf_ctl *);
-static int vbs_write(struct deviceinfo *, const char *, unsigned);
-static int vb_write(struct deviceinfo *, const char *, unsigned);
-static int fb_write(struct deviceinfo *, const char *, unsigned);
-static int u_write(struct deviceinfo *, const char *, unsigned);
-static int dbs_write(struct deviceinfo *, const char *, unsigned);
-static int db_write(struct deviceinfo *,const char *, unsigned);
-int mts_fswrite(struct deviceinfo *, const char *, unsigned);
-static int unix_write(struct deviceinfo *, const char *, unsigned);
+static int vbs_write(struct deviceinfo *, const unsigned char *, unsigned int);
+static int vb_write(struct deviceinfo *, const unsigned char *, unsigned int);
+static int fb_write(struct deviceinfo *, const unsigned char *, unsigned int);
+static int u_write(struct deviceinfo *, const unsigned char *, unsigned int);
+static int dbs_write(struct deviceinfo *, const unsigned char *, unsigned int);
+static int db_write(struct deviceinfo *,const unsigned char *, unsigned int);
+static int unix_write(struct deviceinfo *, const unsigned char *, unsigned int);
 static int tflush(struct deviceinfo *, int);
 static char *getpath(char *);
-char *getparameter(char *,int);
-READ_RTN fmtstring(unsigned char *,struct buf_ctl *);
 static unsigned char *crefname(unsigned char *);
 static unsigned char *verfname(unsigned char *,struct buf_ctl *,int);
 static int getfname(struct deviceinfo *);
-int posn(struct deviceinfo *, int);
-int wrt_tlr(struct deviceinfo *);
-static struct deviceinfo *onwhat(char *);
-extern unsigned char *tape_err(struct deviceinfo *,char *,char *,int,int);
-extern int getfsname(struct deviceinfo *);
-extern char *getAnotherFile(char *);
-extern void *yield_();
-unsigned char path_name[4096];
-unsigned char var_name[256];
-char message_area[4096];
-char fname[258];
-char julian_date[20];
-int warn=ON;
-int cancel_command=OFF;
-int machine_arch;
-int infile_recording_mode=RECORD;
-int outfile_recording_mode=STREAM;
-char *expirefunction(struct deviceinfo *, char *);
+
+/* Static data */
+static unsigned char path_name[4096];
+static char fname[258];
+static char julian_date[20];
+static int cancel_command=OFF;
+
 #if SYSTEM == OS4
 typedef
 struct 
@@ -130,16 +136,18 @@ void myattn(int signum)
  {
   if (tapeo.need_trailer==ON)
    wrt_tlr(&tapeo);
-  (tapeo.old_handler)();
+  (tapeo.old_handler)(signum);
  }
+
+
 int wrt_tlr(struct deviceinfo *odevice) 
  {
-#if SYSTEM == OS4
-  void (*old_handler)();
+#if SYSTEM == OS4 || SYSTEM == MSVC || SYSTEM == CYGWIN
+  void (*old_handler)(int);
 #endif
 
   tflush(odevice,1);                      /* flush the current file */
-#if SYSTEM == OS4
+#if SYSTEM == OS4 || SYSTEM == MSVC || SYSTEM == CYGWIN
   old_handler = signal(SIGINT,SIG_IGN);
 #else
   sighold(SIGINT);
@@ -164,23 +172,28 @@ int wrt_tlr(struct deviceinfo *odevice)
     tapebsf(odevice,3);                  /* back up over extra TM's */
    }
   odevice->need_trailer=OFF;             /* trailer safely written */
-#if SYSTEM == OS4
+#if SYSTEM == OS4 || SYSTEM == MSVC || SYSTEM == CYGWIN
   signal(SIGINT,old_handler);
 #else
   sigrelse(SIGINT);
 #endif
+  return 0;
  }
-int tpopen(int open_type,unsigned char * device_name)
+
+
+int tpopen(int open_type, unsigned char * device_name, int is_VLO_tape, int not_fs)
   {
    char vol1[] = "VOL1";
    char *tpath_name;
    char *type;
    unsigned char *status;
    unsigned char buf[4];
-   int len,taped,i;
+   int len,taped = -1,i;
    struct buf_ctl tbuf;
    struct deviceinfo *tape;
   
+   memset(&tbuf, 0, sizeof(tbuf));
+   
    if (open_type == INPUT) tape=&tapei;      /* point to proper control block */
    else if (open_type == OUTPUT) 
     {
@@ -235,7 +248,7 @@ int tpopen(int open_type,unsigned char * device_name)
        issue_error_message(message_area);
        return (-1);                          /* user and return */
       } 
-     taped=open(tpath_name,O_RDONLY);        /* try to open for input */
+     taped=open(tpath_name,O_RDONLY|O_BINARY); /* try to open for input */
     }
    else if (tape==&tapeo)                    /* opening for output? */
     {
@@ -247,13 +260,17 @@ int tpopen(int open_type,unsigned char * device_name)
        issue_error_message(message_area);
        return(-1);                           /* tell user and return */
       } 
-     taped=open(tpath_name,O_RDWR);          /* try to open for output */ 
+     if (tape->label>0 && tbuf.copy_type==FILENAME)
+      /* Labeling a virtual tape, truncate it */
+      taped = open(tpath_name, O_RDWR|O_TRUNC|O_BINARY);
+     else
+      taped=open(tpath_name,O_RDWR|O_BINARY); /* try to open for output */ 
     }
    if (taped < 0)                            /* open sucessfull? */
     {
      if (tape == &tapeo)                     /* no - was this an output? */  
       {
-       taped=open(tpath_name,O_RDONLY);      /* yep - opens as input? */ 
+       taped=open(tpath_name,O_RDONLY|O_BINARY); /* yep - opens as input? */ 
        if (taped >= 0)                       /* yep - tell user can't open*/
         {
          issue_error_message(strcat(strcpy(message_area,strerror(errno)),"\n"));
@@ -265,8 +282,12 @@ int tpopen(int open_type,unsigned char * device_name)
       }
      if (tape == &tapeo && tape->label>0 && 
          tbuf.copy_type==FILENAME) /* if labeling and a file */
-      taped=open(tpath_name,O_RDWR|O_CREAT,
+      taped=open(tpath_name,O_RDWR|O_CREAT|O_BINARY,
+#if SYSTEM == MSVC
+                  _S_IREAD | _S_IWRITE);
+#else
                   S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH); /* try to create and open */
+#endif
      if (taped <= 0)                         /* open still fails? */
       { 
        issue_error_message(strcat(strcpy(message_area,strerror(errno)),"\n"));
@@ -279,7 +300,7 @@ int tpopen(int open_type,unsigned char * device_name)
    tape->file=taped;                       /* put file/device name in ctl blk */
    tape->leot=OFF;
    len=strlen((char*)device_name);
-   tape->name=malloc(len+1);
+   tape->name = (char *) malloc(len+1);
    strcpy(tape->name,(char *)device_name);
    if (tbuf.copy_type == TAPE)             /* opening a real tape? */
     {
@@ -287,16 +308,32 @@ int tpopen(int open_type,unsigned char * device_name)
      tape->drive_type=getdrivetype(tape);  /* get some info on the device */
     }
    else     
-    tape->realtape=NO;                     /* not real - mark as virtual */
+    {
+     tape->realtape=NO;                    /* not real - mark as virtual */
+     /* If we're initializing this tape drive_type is already set.  If not
+        it will be set below. */
+    }
    taperew(tape);                          /* rewind the tape */
    if (tape==&tapeo && tape->label>0)      /* initializing a tape? */
     {
+     /* If it's not a real tape we should have a format */
+     if (tape->realtape == NO &&
+         tape->drive_type != DEV_FAKETAPE &&
+         tape->drive_type != DEV_AWSTAPE)
+      {
+       issue_error_message("Format not set when initializing a simulated tape\n");
+       close(taped);                       /* close */
+       free(tape->name);                   /* release control block */
+       tape->name=NULL; 
+       return -1;
+      }
      memset(tape->vol1,' ',80);            /* yep - creat blank vol label */ 
      memcpy(&tape->vol1,"VOL1",4);         /* put in the VOL! indentifer */
      len=strlen((char *)tape->volume);     /* fill in the volume name */
      memcpy(&tape->vol1[4],tape->volume,len);
      len=strlen(tape->owner);              /* get length of owner name */
-     if (tape->label == IBM_LABEL || 
+     if (tape->label == IBM_LABEL ||
+         tape->label == VLO_LABEL ||
          tape->label == TOS_LABEL)         /* IBM or TOS labeled? */  
       {
        memset(&tape->vol1[10],'0',1);      /* yes - char 0 always here */
@@ -329,10 +366,43 @@ int tpopen(int open_type,unsigned char * device_name)
      len=read(tape->file,tape->buffer,12); /* read IBG */
      lseek(tape->file,0L,SEEK_SET);        /* rewind */
      tape->buffer[12]='\0';                /* term IBG */
-     if (len != 12 ||                      /* validate length, */
-        (strspn((char *)tape->buffer,"0123456789ABCDEF") != 12) || /* char set*/
-        (memcmp(tape->buffer,"0000",4) != 0) ||  /* prev rec len must = 0 */
-        (memcmp(tape->buffer+4,tape->buffer+8,4) != 0)) /* current len and check must = */
+     if (len == 12 &&                      /* validate length, */
+        (strspn((char *)tape->buffer,"0123456789ABCDEF") == 12) && /* char set*/
+        (memcmp(tape->buffer,"0000",4) == 0) &&  /* prev rec len must = 0 */
+        (memcmp(tape->buffer+4,tape->buffer+8,4) == 0)) /* current len and check must = */
+      {
+      /* It looks like a faketape, is it supposed to be? */
+      if (tape->drive_type == 0 || tape->drive_type == DEV_FAKETAPE)
+       tape->drive_type = DEV_FAKETAPE;
+      else
+       tape->drive_type = 0;
+      }
+     else 
+      {
+       /* See if it looks like an AWSTape file */
+       AWSTAPE_BLKHDR hdr;
+       lseek(tape->file,0L,SEEK_SET);        /* verify we start with a IBG */
+       len=read(tape->file, &hdr, sizeof(hdr));  /* read IBG */
+       lseek(tape->file,0L,SEEK_SET);        /* rewind */
+       if (len == sizeof(hdr) &&
+           hdr.prvblkl == 0 &&
+           (hdr.flags1 == AWSTAPE_FLAG1_NEWREC + AWSTAPE_FLAG1_ENDREC ||
+            hdr.flags1 == AWSTAPE_FLAG1_TAPEMARK) &&
+           hdr.flags2 == 0)
+        {
+         /* Could be, it's a bit hard to say since the header isn't self 
+            checking.  If it's supposed to be (or we don't know) assume
+            it is. */
+         if (tape->drive_type == 0 || tape->drive_type == DEV_AWSTAPE)
+          tape->drive_type = DEV_AWSTAPE;
+         else
+          tape->drive_type = 0;
+        }
+       else
+        /* Not a format we recognize */
+        tape->drive_type = 0;
+      }
+     if (tape->drive_type != DEV_FAKETAPE && tape->drive_type != DEV_AWSTAPE)
       {
        sprintf(message_area,
                "'%s' is not a virtual tape\n",device_name); /*not valid*/
@@ -394,7 +464,7 @@ int tpopen(int open_type,unsigned char * device_name)
            tape->fatal=ON;
            return (len);
           }
-         if (len>80)                      /* check to see if FS header */
+         if (len>80 && !not_fs)           /* check to see if FS header */
           if (memcmp((char*)tape->buffer,magic_id,4) ==0 ||           
               memcmp((char *)tape->buffer,magic_id2,4)==0) 
            {
@@ -418,6 +488,18 @@ int tpopen(int open_type,unsigned char * device_name)
           {
            tape->wrt_hdr_rtn=&wrt_toshdr;    /* set header write routine */
            tape->wrt_tlr_rtn=&wrt_tostlr;    /* set trailer write routine */
+          }
+        }
+       else if (tape->label==VLO_LABEL ||    /* Just labeled as a VLO tape */
+                is_VLO_tape)                 /* Caller said it is VLO */
+        {
+         tape->tape_type = VLO_LABEL;
+         tape->rd_hdr_rtn = &rd_nohdr;
+         tape->rd_tlr_rtn = NULL;
+         if (tape == &tapeo)
+          {
+           tape->wrt_hdr_rtn = &wrt_nohdr;
+           tape->wrt_tlr_rtn = &wrt_notlr;
           }
         }
        else
@@ -448,28 +530,36 @@ int tpopen(int open_type,unsigned char * device_name)
         }
        if (len==0)                  
         {
-         tpsync(tape);                     /* there wasn't one */
-         tapefsf(tape,1);                  /* skip the tape mark */
-         len=tpread(tape,tape->buffer,32768*2); /* see if first file is null */ 
-         if (len==0)                       /* was there one? */
+         if (! not_fs)
           {
-           tpsync(tape);                   /* first file is Null */
-           tapefsf(tape,1);                /* skip the tape mark */
-           len=tpread(tape,tape->buffer,32768*2); /* try to read FS header */ 
-           if (len>80)                       /* was there one? */
-            if (memcmp((char *)tape->buffer,magic_id,4) ==0 ||        
-                memcmp((char *)tape->buffer,magic_id2,4)==0)
-             {
-              tape->rd_hdr_rtn=&rd_nohdr;    /* yep -change header read rtn */
-              tape->rd_tlr_rtn=NULL;         /* change trailer read rtn */
-              if (tape==&tapeo)              /* if opening for output */
+           tpsync(tape);                     /* there wasn't one */
+           tapefsf(tape,1);                  /* skip the tape mark */
+           len=tpread(tape,tape->buffer,32768*2); /* see if first file is null */ 
+           if (len==0)                       /* was there one? */
+            {
+             tpsync(tape);                   /* first file is Null */
+             tapefsf(tape,1);                /* skip the tape mark */
+             len=tpread(tape,tape->buffer,32768*2); /* try to read FS header */ 
+             if (len>80)                       /* was there one? */
+              if (memcmp((char *)tape->buffer,magic_id,4) ==0 ||        
+                  memcmp((char *)tape->buffer,magic_id2,4)==0)
                {
-                tape->wrt_hdr_rtn=&wrt_nohdr; /* change header read rtn */
-                tape->wrt_tlr_rtn=&wrt_notlr; /* change header write rtn */
+                tape->rd_hdr_rtn=&rd_nohdr;    /* yep -change header read rtn */
+                tape->rd_tlr_rtn=NULL;         /* change trailer read rtn */
+                if (tape==&tapeo)              /* if opening for output */
+                 {
+                  tape->wrt_hdr_rtn=&wrt_nohdr; /* change header read rtn */
+                  tape->wrt_tlr_rtn=&wrt_notlr; /* change header write rtn */
+                 }
+                tape->tape_type=FS_VLOLABEL;    /* mark tape as FS VLO tape */
                }
-              tape->tape_type=FS_VLOLABEL;    /* mark tape as FS VLO tape */
-             }
+            }
           }
+        }
+       else if (tape->tape_type == VLO_LABEL) /* Can't have HDR1 on VLO tape */
+        {
+         issue_ferror_message("VLO tape should have a tape mark following VOL1 label\n");
+         return -1;
         }
        else if (len==80 &&
                 strncmp((char*)&buf,"HDR1",4) == 0) /* This a HDR1 record? */
@@ -495,7 +585,7 @@ int tpopen(int open_type,unsigned char * device_name)
              tape->wrt_tlr_rtn=&wrt_tostlr; /* change trailer write rtn */
             }
           }
-         else if (len==80)
+         else if (len==80 && !not_fs)
           {
            tapefsf(tape,1);                 /* skip over rest of header */
            len=tpread(tape,tape->buffer,32768*2); /* is this a null file? */
@@ -536,10 +626,10 @@ int tpopen(int open_type,unsigned char * device_name)
         }
        memcpy(tape->vol1,tape->buffer,80);  /* copy VOL1 record */
        memcpy(tape->volume,&tape->vol1[4],6); /* copy volume name */
-       for (i=0;i<6 && tape->volume[i] != ' ';i++); /* and terminate */
+       for (i=0;i<6 && tape->volume[i] != ' ';i++) ; /* and terminate */
         tape->volume[i]='\0';
        memcpy(tape->owner,&tape->vol1[37],14); /* copy owner ID */
-       for (i=0;i<14 && tape->owner[i] != ' ';i++); /* and terminate */
+       for (i=0;i<14 && tape->owner[i] != ' ';i++) ; /* and terminate */
         tape->owner[i]='\0';                 
        tape->translate=OFF;                /* default to no translate */
        tape->tape_type=ANSI_LABEL;         /* set tape type to ansi label */
@@ -572,6 +662,8 @@ int tpopen(int open_type,unsigned char * device_name)
     tape->leot=ON;
    return (1);                        /* done */
   }
+
+
 int posn(struct deviceinfo *tape, int tposn) 
  {
   struct tapestats tapes;
@@ -586,7 +678,8 @@ int posn(struct deviceinfo *tape, int tposn)
       tape->lp == OFF ||               /* label processing is off or */
       tape->tape_type == UNLABELED)   /* tape is unlabeled */
    truefile = tposn-1;         /* set phsyical file # one less logical file # */
-  else if (tape->tape_type == IBM_LABEL || tape->tape_type == ANSI_LABEL ||
+  else if (tape->tape_type == IBM_LABEL ||
+           tape->tape_type == ANSI_LABEL ||
            tape->tape_type == TOS_LABEL || 
            tape->tape_type == FS_IBMLABEL) /* a labeled tape? */
    {
@@ -595,7 +688,8 @@ int posn(struct deviceinfo *tape, int tposn)
     if (tape->tape_type == FS_IBMLABEL) /* if a labeled FS tape */
      truefile+=3;                     /* physical file = 3 * (logical file #) */
    }
-  else if (tape->tape_type == FS_UNLABELED) /* fs unlabeled tape? */
+  else if (tape->tape_type == FS_UNLABELED || /* fs unlabeled tape? */
+           tape->tape_type == VLO_LABEL)  /* VLO tape */
    truefile = tposn;                  /* yep - physical file = logical file # */
   else if (tape->tape_type == FS_VLOLABEL)  /* vlo FS tape ? */
    truefile = tposn+1;             /* yep - physical file = logical file # +1 */
@@ -652,7 +746,8 @@ int posn(struct deviceinfo *tape, int tposn)
           tapebsf(tape,1);             /* backup to previous file */
           if (tape->lp == OFF || tape->tape_type == UNLABELED) /* unlabeled? */
            tape->position=tapes.mt_fileno; /* yep logical file = physical file +1 */ 
-          else if (tape->tape_type == FS_UNLABELED) /* fs unlabeled? */ 
+          else if (tape->tape_type == FS_UNLABELED || /* fs unlabeled? */
+                   tape->tape_type == VLO_LABEL)  /* VLO tape? */
            tape->position=tapes.mt_fileno+1; /* yep logical file = physical file +2 */
           else if (tape->tape_type == FS_VLOLABEL) /* fs vlo tape? */ 
            tape->position=tapes.mt_fileno+2; /* yep logical file = physical file+3 */
@@ -679,6 +774,8 @@ int posn(struct deviceinfo *tape, int tposn)
   if (tape->lp == HEADER_RTN) return (0);/*if call from header rtn just return*/
   return ((*tape->rd_hdr_rtn)(tape,truefile)); /*else read header and return*/
  }
+
+
 static int rd_nohdr(struct deviceinfo *tape,int posn)
  { 
   int len;
@@ -699,17 +796,17 @@ static int rd_nohdr(struct deviceinfo *tape,int posn)
    }
   else if (tape->format[0] == '\0' ||
            tape->read_rtn == NULL)         /*format and read rtn already set? */
-  {                                        /* no - det defaults */
-   strcpy((char *)tape->format,"U");        /* mark format U */
-   tape->read_rtn=&u_read;                  /* yep -set read routine */
-   tape->rec_len=0;                         /* set rec length */
-   if (tape->realtape==NO ||                /* virtual tape or */
-           tape->drive_type==DEV_HALFINCH)  /* a half inch device? */
-    tape->block_len=32767;                  /* set block len */
-   else if (tape->drive_type==DEV_QIC)      /* QIC tape? */ 
-    tape->block_len=32768;                  /* set "block len" */
-   else                                     /* must be a 4mm or 8mm */
-    tape->block_len=65535;                  /* set block length */
+   {                                        /* no - det defaults */
+    strcpy((char *)tape->format,"U");        /* mark format U */
+    tape->read_rtn=&u_read;                  /* yep -set read routine */
+    tape->rec_len=0;                         /* set rec length */
+    if (tape->realtape==NO ||                /* virtual tape or */
+        tape->drive_type==DEV_HALFINCH)  /* a half inch device? */
+     tape->block_len=32767;                  /* set block len */
+    else if (tape->drive_type==DEV_QIC)      /* QIC tape? */ 
+     tape->block_len=32768;                  /* set "block len" */
+    else                                     /* must be a 4mm or 8mm */
+     tape->block_len=65535;                  /* set block length */
    }
   if (tape->drive_type != DEV_QIC)         /* Non QIC devices check for EOF */ 
    {
@@ -732,7 +829,7 @@ static int rd_nohdr(struct deviceinfo *tape,int posn)
         if (tapes.mt_fileno % 3 == 0)
          return (1);                       /* yep assume LEOT */     
        }
-      tapefsf(tape,1);                     /* skip rm */
+      tapefsf(tape,1);                     /* skip tm */
       len=tpread(tape,tape->buffer,32768*2); /* any data here? */
       if (len < 0)
        {    
@@ -740,9 +837,8 @@ static int rd_nohdr(struct deviceinfo *tape,int posn)
         tape->fatal=ON;
         return(len);
        }
-      if (len < 0){fprintf(stderr,"Fatal error\n");exit(1);} /* for now */ 
       if (len == 0) tpsync(tape);          /* if another tape mark - sync and */
-       tapebsf(tape,1);                    /* and backspace a file */
+      tapebsf(tape,1);                    /* and backspace a file */
       if (len == 0) return (1);     /* if two null files in a row return LEOT */
      }
     else                                   /* file wasn't null */ 
@@ -755,6 +851,8 @@ static int rd_nohdr(struct deviceinfo *tape,int posn)
   validate_format(tape);                  /* validate tape format */
   return (getfname(tape));                /* get file name if *FS and return */ 
  }
+
+
 static int rd_ibmhdr(struct deviceinfo *tape,int posn)
  {
   int len,i;
@@ -845,12 +943,15 @@ static int rd_ibmhdr(struct deviceinfo *tape,int posn)
   return (getfname(tape));                    /* get file name and return */
   lblerr:
    tapestatus(tape,&tapes);                  /*get tape status */
-   issue_ferror_message(" len=%d file=%d\n  hdr1=%s\n hdr2=%s\n"
-                  ,len,tapes.mt_fileno,tape->hdr1,tape->hdr2);
+   sprintf(message_area, " len=%d file=%d\n  hdr1=%s\n hdr2=%s\n"
+           ,len,tapes.mt_fileno,tape->hdr1,tape->hdr2);
+   issue_ferror_message(message_area);
    issue_ferror_message("Header label error\n");  /* tell user bad news */
    tape->fatal=ON;
    return(-1);
  }
+
+
 static int rd_ansihdr(struct deviceinfo *tape,int posn)
  {
   int len;
@@ -948,12 +1049,14 @@ static int rd_ansihdr(struct deviceinfo *tape,int posn)
   return (getfname(tape));                 /* get name of datset and return */
   lblerr:                                  /* on label error print some info */
    tapestatus(tape,&tapes);
-   issue_ferror_message(" len=%d file=%d\n"
-                  ,len,tapes.mt_fileno);
+   sprintf(message_area, " len=%d file=%d\n",len,tapes.mt_fileno);
+   issue_ferror_message(message_area); 
    issue_ferror_message("Header label error\n");
    tape->fatal=ON;
    return(-1);
  }
+
+
 static int rd_toshdr(struct deviceinfo *tape,int posn)
  {
   int len,i;
@@ -991,22 +1094,31 @@ static int rd_toshdr(struct deviceinfo *tape,int posn)
   return (getfname(tape));                  /* get file name and return */
   toslblerr:                                /* on label error print some info */
    tapestatus(tape,&tapes);
-   issue_ferror_message(" len=%d file=%d \n"
-                  ,len,tapes.mt_fileno);
+   sprintf(message_area," len=%d file=%d \n",len,tapes.mt_fileno);
+   issue_ferror_message(message_area);
    issue_ferror_message("Header label error\n");
    tape->fatal=ON;
    return(-1);
  }
+
+
 static WRITE_RTN wrt_nohdr(struct deviceinfo *tape) 
  {
-  int (*write_rtn)();
+  WRITE_RTN write_rtn;
   int hdr_posn;
   struct tapestats tapes;
  
   tapestatus(tape,&tapes);                /* get info on tape position */
-  hdr_posn=tape->position=tapes.mt_fileno+1; /* Locical file = phys +1 */
-  if (tape->lp==ON && tape->tape_type==FS_VLOLABEL) hdr_posn++; /* + 1 if VLO */
-  posn(tape,hdr_posn);                       /*make sure at start of data area*/
+  if (tape->lp==ON &&
+      tape->tape_type==FS_VLOLABEL)
+   hdr_posn = tapes.mt_fileno - 1;        /* Logical file = phys - 1 */
+  else if (tape->lp== ON &&
+       tape->tape_type==VLO_LABEL)
+   hdr_posn = tapes.mt_fileno;              /* Logical file = phys file */
+  else
+   hdr_posn = tapes.mt_fileno+1;          /* Locical file = phys +1 */
+  tape->position = hdr_posn;
+  posn(tape,hdr_posn);                    /*make sure at start of data area*/
   if ((tape->lp==ON && tape->tape_type==FS_VLOLABEL) || /* If this is an FS tape */
     (tape->lp==ON && tape->tape_type==FS_UNLABELED))
    {
@@ -1036,8 +1148,7 @@ static WRITE_RTN wrt_nohdr(struct deviceinfo *tape)
   if (validate_format(tape) == NULL) return(NULL); /* see if format valid */
    /* set appropiate write routine */
   if (tape->lp == 1 && tape->tape_type >= FS_UNLABELED) write_rtn=&mts_fswrite;
-  else if (tape->lp == 1 && tape->tape_type >= FS_VLOLABEL)
-   write_rtn=&mts_fswrite;
+  else if (tape->lp == 1 && tape->tape_type >= FS_VLOLABEL) write_rtn=&mts_fswrite;
   else if (strcmp((char *)tape->format,"DBS") == 0) write_rtn=&dbs_write;
   else if (strcmp((char *)tape->format,"DS") == 0) write_rtn=&dbs_write;
   else if (strcmp((char *)tape->format,"DB") == 0) write_rtn=&db_write;
@@ -1054,14 +1165,16 @@ static WRITE_RTN wrt_nohdr(struct deviceinfo *tape)
   else exit(2);                          /* sno */ 
   tape->blocks=tape->arec_len=0;         /* initialize blocks read */
   return(write_rtn);                     /* return the write routine */
- } 
+ }
+
+
 static WRITE_RTN wrt_ibmhdr(struct deviceinfo *tape)
  {
   struct tapestats tapes;
   int len, i, hdr_posn, cur;
   time_t timeval;
   struct tm *tm;
-  int (*write_rtn)();
+  WRITE_RTN write_rtn;
 
   if (tape->lp == ON && tape->tape_type == FS_IBMLABEL)
    { 
@@ -1162,13 +1275,15 @@ static WRITE_RTN wrt_ibmhdr(struct deviceinfo *tape)
   tape->blocks=tape->arec_len=0;                   /* initialize block count */
   return (write_rtn);                              /* return write routine */
  }
+
+
 static WRITE_RTN wrt_ansihdr(struct deviceinfo *tape)
  {
   struct tapestats tapes;
   int len, i, hdr_posn,cur;
   time_t timeval;
   struct tm *tm;
-  int (*write_rtn)();
+  WRITE_RTN write_rtn;
  
   time(&timeval);                               /* get current time */
   tm=localtime(&timeval);                       /* in exploded format */
@@ -1271,9 +1386,11 @@ static WRITE_RTN wrt_ansihdr(struct deviceinfo *tape)
   tape->blocks=tape->arec_len=0;               /* initialize block count */
   return (write_rtn);                          /* return write routine */
  }
+
+
 static WRITE_RTN wrt_toshdr(struct deviceinfo *tape) 
  {
-  int (*write_rtn)();
+  WRITE_RTN write_rtn;
   int hdr_posn, i, len, cur;
   time_t timeval;
   struct tm *tm;
@@ -1355,7 +1472,9 @@ static WRITE_RTN wrt_toshdr(struct deviceinfo *tape)
   else exit(2);                            /* sno */
   tape->blocks=tape->arec_len=0;           /* reset block count */
   return(write_rtn);                       /* return write routine */ 
- } 
+ }
+
+
 static char *validate_format(struct deviceinfo *tape)
  {
   int len;
@@ -1436,9 +1555,14 @@ static char *validate_format(struct deviceinfo *tape)
    } 
   return ((char *)tape->format);       /* looks fine */
  }
-static int wrt_notlr()
+
+
+static int wrt_notlr(struct deviceinfo *tape)
  {                        /* can't get much easier than this */
+  return 0;
  }
+
+
 static int wrt_ibmtlr(struct deviceinfo *tape)
  {
   int  i;
@@ -1460,8 +1584,10 @@ static int wrt_ibmtlr(struct deviceinfo *tape)
   for (i=0;i<80;i++) tape->buffer[i]=ASCEBC[tape->hdr2[i]]; /* EOF2 in EBCDIC */
   tpwrite(tape,tape->buffer,80);       /* write EOF2 */
   tapeweof(tape,1);                    /* write Tape Mark */
-  return;                              /* done */
+  return 0;                              /* done */
  }
+
+
 static int wrt_ansitlr(struct deviceinfo *tape)
  {
   if (tape->eov == ON)                   /* write EOV trailer? */
@@ -1479,8 +1605,10 @@ static int wrt_ansitlr(struct deviceinfo *tape)
   tpwrite(tape,tape->hdr1,80);         /* write EOF1 */
   tpwrite(tape,tape->hdr2,80);         /* write EOF2 */
   tapeweof(tape,1);                    /* write Tape Mark */
-  return;                              /* done */
+  return 0;                              /* done */
  }
+
+
 static int wrt_tostlr(struct deviceinfo *tape)
  {
   int  i;
@@ -1498,8 +1626,10 @@ static int wrt_tostlr(struct deviceinfo *tape)
   for (i=0;i<80;i++) tape->buffer[i]=ASCEBC[tape->hdr1[i]]; /* HDR1 to EBCDIC */
   tpwrite(tape,tape->buffer,80);      /* write EOF1 */
   tapeweof(tape,1);                   /* write tape mark */
-  return;                             /* done */
+  return 0;                             /* done */
  }
+
+
 static unsigned char *vbs_read(struct deviceinfo *taper,struct buf_ctl *buf_ctl)
  {
 #define IBM_FIRST 0x01
@@ -1515,8 +1645,7 @@ static unsigned char *vbs_read(struct deviceinfo *taper,struct buf_ctl *buf_ctl)
     if (taper->rem_len==0) {tpsync(taper);return (NULL);} /* return on EOF */
     else if (taper->rem_len<0)                  /* read error? */
      return(tape_err(taper,"Read","VS/VBS",taper->blocks,errno));  /* yep - too bad */
-    memcpy(&dw,taper->buffer,2);           /* pick up BDW */
-    INV_SHORT_INT(dw);                     /* invert BDW if necessary */ 
+    dw = etohs(*((unsigned short *)taper->buffer));             /* pick up BDW */
     if (taper->rem_len==18) taper->rem_len=dw;/* if len read=18 substitute BDW*/
     taper->offset=4;                       /* offset of first record */
     taper->rem_len -=4;                    /* calc remaining length in block */
@@ -1524,7 +1653,7 @@ static unsigned char *vbs_read(struct deviceinfo *taper,struct buf_ctl *buf_ctl)
     buf_ctl->blocks++;                     /* incr relative block count */
    }
   memcpy(&dw,taper->buffer+taper->offset,2); /* pick up RDW */
-  INV_SHORT_INT(dw);                       /* invert RDW if necessary */ 
+  dw = etohs(dw);                            /* invert RDW if necessary */ 
   memcpy(&span,taper->buffer+taper->offset+2,1); /* pick up span byte */
   buf_ctl->seg_len=dw-4;                   /* length of segment = LRECL-4 */
   buf_ctl->bufaddr=&taper->buffer[taper->offset+4]; /* point to start of seg */
@@ -1541,6 +1670,8 @@ static unsigned char *vbs_read(struct deviceinfo *taper,struct buf_ctl *buf_ctl)
    }
   return (buf_ctl->bufaddr);              /* return address of segment */
  }
+
+
 static unsigned char *vb_read(struct deviceinfo *taper,struct buf_ctl *buf_ctl)
  {
   unsigned short int dw;
@@ -1551,8 +1682,7 @@ static unsigned char *vb_read(struct deviceinfo *taper,struct buf_ctl *buf_ctl)
     if (taper->rem_len==0) {tpsync(taper);return (NULL);} /* return on EOF */
     else if (taper->rem_len<0)           /* read error? */
      return(tape_err(taper,"Read","V/VB",taper->blocks,errno)); /* yep - too bad */
-    memcpy(&dw,taper->buffer,2);         /* get  block descriptor word */
-    INV_SHORT_INT(dw);                   /* invert BDW if necessary */ 
+    dw = etohs(*((unsigned short *)taper->buffer));           /* get  block descriptor word */ 
     if (taper->rem_len==18) taper->rem_len=dw; /* if len=18 use BDW instead */
     if (taper->tape_type==ANSI_LABEL)    /* should illegal but MTS allows */
      {
@@ -1568,7 +1698,7 @@ static unsigned char *vb_read(struct deviceinfo *taper,struct buf_ctl *buf_ctl)
     buf_ctl->blocks++;                   /* incr relative block count */
    }
   memcpy(&dw,taper->buffer+taper->offset,2); /* Get RDW */
-  INV_SHORT_INT(dw);                     /* invert RDW if necessary */ 
+  dw = etohs(dw);                        /* invert RDW if necessary */ 
   buf_ctl->seg_len=dw-4;                 /* record length = LRECL -4 */
   buf_ctl->bufaddr=&taper->buffer[taper->offset+4]; /* point to start of rec */
   buf_ctl->eor=1;                        /* mark end of record */
@@ -1583,6 +1713,8 @@ static unsigned char *vb_read(struct deviceinfo *taper,struct buf_ctl *buf_ctl)
    }
   return (buf_ctl->bufaddr);             /* return start of record */
  }
+
+
 static unsigned char *fb_read(struct deviceinfo *taper,struct buf_ctl *buf_ctl)
  {
   div_t d;
@@ -1616,6 +1748,8 @@ static unsigned char *fb_read(struct deviceinfo *taper,struct buf_ctl *buf_ctl)
    taper->offset += rec_len;            /* point to next pos record */
    return (buf_ctl->bufaddr);           /* return pointer to record */
  }
+
+
 static unsigned char *ru_read(struct deviceinfo *taper, struct buf_ctl *buf_ctl)
  {
 
@@ -1631,6 +1765,8 @@ static unsigned char *ru_read(struct deviceinfo *taper, struct buf_ctl *buf_ctl)
   taper->rem_len=0;                    /* reset - not used for this read type */
   return (taper->buffer);                  /* return pointer to "record" */
  }
+
+
 static unsigned char *u_read(struct deviceinfo *taper, struct buf_ctl *buf_ctl)
  {
   
@@ -1648,6 +1784,8 @@ static unsigned char *u_read(struct deviceinfo *taper, struct buf_ctl *buf_ctl)
   taper->rem_len=0;                    /* reset - not used for this read type */
   return (buf_ctl->bufaddr);               /* return pointer to record */
  }
+
+
 static unsigned char *dbs_read(struct deviceinfo *taper,struct buf_ctl *buf_ctl)
  {
 #define ANSI_FIRST '1'
@@ -1688,6 +1826,8 @@ static unsigned char *dbs_read(struct deviceinfo *taper,struct buf_ctl *buf_ctl)
    }
   return (buf_ctl->bufaddr);              /* return address of segment read */
  }
+
+
 static unsigned char *db_read(struct deviceinfo *taper,struct buf_ctl *buf_ctl)
  {
   char buf[5];
@@ -1723,15 +1863,19 @@ static unsigned char *db_read(struct deviceinfo *taper,struct buf_ctl *buf_ctl)
    }
   return (buf_ctl->bufaddr);            /* return pointer to segment. */
  }
+
+
 extern unsigned char *tape_err(struct deviceinfo *tape, char *type,char *type2,int block, int error)
  {
   sprintf(message_area,"%s error, during an %s operation, block %d, errno %d\n",
           type,type2,block,error);
-  issue_ferror_message(message_area);
-  issue_error_message(strcat(strcpy(message_area,strerror(errno)),"\n"));
+  issue_error_message(message_area);
+  issue_ferror_message(strcat(strcpy(message_area,strerror(errno)),"\n"));
   tape->fatal=1;
   return (NULL);
  }
+
+
 static unsigned char *unix_read(struct deviceinfo *filei,struct buf_ctl *buf_ctl) 
  {
   unsigned char *rc, *eol;
@@ -1743,7 +1887,7 @@ static unsigned char *unix_read(struct deviceinfo *filei,struct buf_ctl *buf_ctl
     rc=(unsigned char *)fgets((char *)filei->buffer,32768*2,filei->unixfile);
     if (rc != NULL)
      {
-      eol=memchr(&filei->buffer[0],'\n',32768*2);
+      eol = (unsigned char *)memchr(&filei->buffer[0],'\n',32768*2);
       if (eol == NULL) buf_ctl->seg_len=(32768*2)-1;
       else if (eol == &filei->buffer[32768*2-1]) buf_ctl->seg_len=(32768*2)-2;
       else if (*(eol+1) == '\0')
@@ -1768,6 +1912,8 @@ static unsigned char *unix_read(struct deviceinfo *filei,struct buf_ctl *buf_ctl
    }
   return (rc);                                  /* return buffer address */
  }
+
+
 READ_RTN fmtstring(unsigned char *format,struct buf_ctl *buf_ctl)
 {
   char *opar, *cpar, *comma;
@@ -1968,7 +2114,7 @@ READ_RTN fmtstring(unsigned char *format,struct buf_ctl *buf_ctl)
    }
   else                                   /* unknown format entered */
    {
-    sprintf(message_area,"\"%s\" is an unkown format coding.\n");
+    sprintf(message_area,"\"%s\" is an unkown format coding.\n", format);
     issue_error_message(message_area);
     goto fmterr;
    }
@@ -1985,7 +2131,9 @@ READ_RTN fmtstring(unsigned char *format,struct buf_ctl *buf_ctl)
   *cpar=')';                            /* reset ) */
   return (NULL);                        /* return NULL (error) */
  }
-static int vbs_write(struct deviceinfo *device, const char *buf,unsigned int size)
+
+
+static int vbs_write(struct deviceinfo *device, const unsigned char *buf,unsigned int size)
  {
   short unsigned int dw;
   int move_size, rem_len, offset, len;
@@ -2056,7 +2204,7 @@ static int vbs_write(struct deviceinfo *device, const char *buf,unsigned int siz
       tflush(device,0);                  /* flush if unlocked or out of room */
       return (0);                        /* done */
      }
-     if (machine_arch == IND)        /* need to invert RDW? */
+#ifdef BYTE_SWAPPED        /* need to invert RDW? */
        {
         unsigned char temp;
 
@@ -2064,11 +2212,14 @@ static int vbs_write(struct deviceinfo *device, const char *buf,unsigned int siz
         device->seg_start[0]=device->seg_start[1];
         device->seg_start[1]=temp;
        }
+#endif
     device->seg_start=&device->buffer[device->offset]; /* point to new record */
    }
   return (0);                        /* done */
  }
-static int vb_write(struct deviceinfo *device, const char *buf,unsigned size)
+
+
+static int vb_write(struct deviceinfo *device, const unsigned char *buf,unsigned size)
  {
   short unsigned int dw;
   int offset,len,i,move_size,rem_len;
@@ -2155,7 +2306,7 @@ static int vb_write(struct deviceinfo *device, const char *buf,unsigned size)
         tflush(device,0);             /* flush if Unblocked or out of room */
         return (0);                   /* done */
        }
-     if (machine_arch == IND)        /* need to invert RDW? */
+#ifdef BYTE_SWAPPED        /* need to invert RDW? */
        {
         unsigned char temp;
 
@@ -2163,6 +2314,7 @@ static int vb_write(struct deviceinfo *device, const char *buf,unsigned size)
         device->seg_start[0]=device->seg_start[1];
         device->seg_start[1]=temp;
        }
+#endif
       device->seg_start=&device->buffer[device->offset]; /* start of next rec */
      }
     else if (device->data_mode == STREAM)
@@ -2173,7 +2325,7 @@ static int vb_write(struct deviceinfo *device, const char *buf,unsigned size)
          tflush(device,0);           /* flush if block full */ 
         else
          {
-          if (machine_arch == IND)        /* need to invert RDW? */
+#ifdef BYTE_SWAPPED        /* need to invert RDW? */
            {
             unsigned char temp;
 
@@ -2181,6 +2333,7 @@ static int vb_write(struct deviceinfo *device, const char *buf,unsigned size)
             device->seg_start[0]=device->seg_start[1];
             device->seg_start[1]=temp;
            }
+#endif
           device->seg_start=&device->buffer[device->offset]; /* start new record */
          }
        }
@@ -2193,7 +2346,9 @@ static int vb_write(struct deviceinfo *device, const char *buf,unsigned size)
    } while (rem_len>0);
   return(0);
  }
-static int fb_write(struct deviceinfo *device, const char *buf,unsigned size)
+
+
+static int fb_write(struct deviceinfo *device, const unsigned char *buf,unsigned size)
  {
   int len;
   int rem_len, offset, move_size;
@@ -2263,11 +2418,13 @@ static int fb_write(struct deviceinfo *device, const char *buf,unsigned size)
    } while (rem_len>0);
   return (0);
  }
-static int u_write(struct deviceinfo *device, const char *buf,unsigned size)
+
+
+static int u_write(struct deviceinfo *device, const unsigned char *buf,unsigned size)
  {
   int move_size, offset, rem_len;
 
-  if (device->data_mode == RECORD && size > device->rem_len-device->blkpfx)
+  if (device->data_mode == RECORD && (int) size > device->rem_len-device->blkpfx)
    {
     issue_warning_message("Warning record longer than blocksize - truncation will occur\n");
     size=device->rem_len-device->blkpfx;
@@ -2297,7 +2454,9 @@ static int u_write(struct deviceinfo *device, const char *buf,unsigned size)
    } while (rem_len>0);
   return(0);
  }
-static int dbs_write(struct deviceinfo *device, const char *buf,unsigned int size)
+
+
+static int dbs_write(struct deviceinfo *device, const unsigned char *buf,unsigned int size)
  {
   int dw;
   char dw_char[5];
@@ -2376,7 +2535,9 @@ static int dbs_write(struct deviceinfo *device, const char *buf,unsigned int siz
    }
   return (0);
  }
-static int db_write(struct deviceinfo *device, const char *buf,unsigned size)
+
+
+static int db_write(struct deviceinfo *device, const unsigned char *buf,unsigned size)
  {
   int dw;
   char dw_char[5];
@@ -2489,16 +2650,20 @@ static int db_write(struct deviceinfo *device, const char *buf,unsigned size)
    } while (rem_len>0);
   return (0);
  }
-static int unix_write(struct deviceinfo *device, const char *buf,unsigned size)
+
+
+static int unix_write(struct deviceinfo *device, const unsigned char *buf,unsigned size)
  {
   device->seg_len=size;
   return(write(device->file,(unsigned char*)buf,size));  /* this is easy - just write */
  }
-static int term_write(struct deviceinfo *device,const char *buf,unsigned size)
+
+
+static int term_write(struct deviceinfo *device,const unsigned char *buf,unsigned size)
  {
   unsigned char buffer[258];
-  int i,j,print;
-  unsigned int temp;
+  int i,print;
+  unsigned int j,temp;
  
   device->seg_len=size;
   print=i=0; 
@@ -2522,22 +2687,25 @@ static int term_write(struct deviceinfo *device,const char *buf,unsigned size)
      }
     if (print==1)
      {
-      append_normal_message(buffer,4);
+      append_normal_message((char *)buffer,4);
       print=i=0;
      }
    }
+  return 0;
  }
+
+
 static int tflush(struct deviceinfo *device,int last_write)
  {
   int dw;
   char dw_char[5];
-#if SYSTEM == OS4
-  void (*old_handler)();
+#if SYSTEM == OS4 || SYSTEM == MSVC || SYSTEM == CYGWIN
+  void (*old_handler)(int);
 #endif
 
   if (device->offset>0)                          /* is there a line to write? */
    {
-#if SYSTEM == OS4
+#if SYSTEM == OS4 || SYSTEM == MSVC || SYSTEM == CYGWIN
     old_handler = signal(SIGINT,SIG_IGN);
 #else
     sighold(SIGINT);
@@ -2574,7 +2742,8 @@ static int tflush(struct deviceinfo *device,int last_write)
       sprintf(dw_char,"%04d",dw);                   /* last RDW to char */     
       memcpy(device->seg_start+device->span,dw_char,4); /* format */
      }
-    if (machine_arch==IND && device->format[0]=='V') /* need to inverts DWs? */
+#ifdef BYTE_SWAPPED
+    if (device->format[0]=='V') /* need to inverts DWs? */
      {
       unsigned char temp;
 
@@ -2585,6 +2754,7 @@ static int tflush(struct deviceinfo *device,int last_write)
       device->seg_start[0]=device->seg_start[1];
       device->seg_start[1]=temp;
      }
+#endif
     if (device->drive_type != DEV_QIC)             /* not a QIC tape? */
      tpwrite(device,device->buffer,device->offset); /* just write out then */
     else 
@@ -2612,7 +2782,7 @@ static int tflush(struct deviceinfo *device,int last_write)
     device->blocks++;                      /* incr block count */
     device->offset=0;                     /* resset offet into output buffer */
     device->rem_len=device->block_len;   /* reset remaining length out buffer */
-#if SYSTEM == OS4
+#if SYSTEM == OS4 || SYSTEM == MSVC || SYSTEM == CYGWIN
     signal(SIGINT,old_handler);
 #else
     sigrelse(SIGINT);
@@ -2622,7 +2792,7 @@ static int tflush(struct deviceinfo *device,int last_write)
    {
     int len;
     
-#if SYSTEM == OS4
+#if SYSTEM == OS4 || SYSTEM == MSVC || SYSTEM == CYGWIN
     old_handler = signal(SIGINT,SIG_IGN);
 #else
     sighold(SIGINT);
@@ -2630,7 +2800,7 @@ static int tflush(struct deviceinfo *device,int last_write)
     len=512-ostream.offset;            /* QIC only - pad last block if needed */
     memset(ostream.buffer+ostream.offset,'^',len);
     write(device->file,ostream.buffer,512);
-#if SYSTEM == OS4
+#if SYSTEM == OS4 || SYSTEM == MSVC || SYSTEM == CYGWIN
     signal(SIGINT,old_handler);
 #else
     sigrelse(SIGINT);
@@ -2638,14 +2808,16 @@ static int tflush(struct deviceinfo *device,int last_write)
    }
   return (0);
  }
+
+
 static char *getpath(char * path)
  {
-#include <pwd.h>
-  char *slash, *home;
-  struct passwd *passwd;
-
+#if SYSTEM != MSVC
   if (path[0]=='~')                        /* is there something to expand? */
    {
+    char *slash, *home;
+    struct passwd *passwd;
+
     slash=strpbrk(path,"/");               /* yep - find file's first / */
     if (path[1]=='/' || path[1] == '\0')   /* just a tilde or start ~/? */
      {
@@ -2667,27 +2839,47 @@ static char *getpath(char * path)
     strcat((char *)path_name,path);      /* cancat with low end parth */
     return ((char *)&path_name);         /* return full path name */
    }
+#endif
   return(path);                         /* return original name */
  }
-int tapeinit()
+
+
+int tapeinit(void)
  {
   unsigned short int test=32767;
+#ifndef BYTE_SWAPPED
   unsigned char ind_test1[2]={0X7F,0XFF};
+#else
   unsigned char ind_test2[2]={0XFF,0X7F};
+#endif
 
-  if (memcmp(ind_test1,&test,2)==0) machine_arch=NON_IND;
-  else if (memcmp(ind_test2,&test,2)==0) machine_arch=IND;
-  else {fprintf(stderr,"Unknown architechure\n"); exit (1);}
+#ifdef BYTE_SWAPPED
+  if (memcmp(ind_test2,&test,2)!=0)
+   {
+    printf("Compiled for little-endian machine, but this is a big-endian machine\n");
+    exit(2);
+   }
+#else
+  if (memcmp(ind_test1,&test,2)!=0)
+   {
+    printf("Compiled for big-endian machine, but this is a little-endian machine\n");
+    exit(2);    
+   }
+#endif
   tapeo.label=tapei.label=OFF;                   /* disable tape labeling */
   tapeo.name=tapei.name=NULL;                    /* no devices allocated */
   return (0);
  }
+
+
 struct deviceinfo *get_tape_ptr(int type)
  {
   if (type == INPUT) return(&tapei);             /* point to Device */
   else if (type == OUTPUT) return(&tapeo);
   else {printf("Unknown output type %d",type); return(NULL);}
  }
+
+
 int closetape(struct deviceinfo *tape)
  {
   int rc;    
@@ -2700,15 +2892,19 @@ int closetape(struct deviceinfo *tape)
   rc = close(tape->file);                              /* close the tape */
   if (rc != 0)
    issue_error_message(strcat(strcpy(message_area,strerror(errno)),"\n"));
-  tape->file=NULL;
+  tape->file=0;
   return(1);
  }
-int tapeclose()
+
+
+int tapeclose(void)
  { 
   if (tapeo.name != NULL) closetape(&tapeo);
   if (tapei.name != NULL) closetape(&tapei);
   return (0);
  }
+
+
 static int getfname(struct deviceinfo *tape)
  {
   int date;
@@ -2718,7 +2914,8 @@ static int getfname(struct deviceinfo *tape)
   if (tape->lp==ON)                             /* label processing enablew? */
    if (tape->tape_type>=FS_UNLABELED)          /* fs unlabeled? */
     return (getfsname(tape));                  /* yep-get name from FS header */
-   else if (tape->tape_type==UNLABELED)        /* unlabeled? */
+   else if (tape->tape_type==UNLABELED ||      /* unlabeled? */
+            tape->tape_type==VLO_LABEL)        /* VLO label */
     tape->file_name[0]='\0';                    /* there is no name */ 
    else 
     {
@@ -2745,6 +2942,8 @@ static int getfname(struct deviceinfo *tape)
    }  
   return (0);
  }
+
+
 static unsigned char *crefname(unsigned char * filename) 
  {
   char s[]="\0\0";
@@ -2789,6 +2988,8 @@ static unsigned char *crefname(unsigned char * filename)
    else s[0]='_';                     /* non trailing blanks to _ */ 
   return (filename);
  }
+
+
 static unsigned char *verfname(unsigned char *filename,struct buf_ctl *buf_ctl,int io)
  {
   struct stat file_status; 
@@ -2848,19 +3049,22 @@ static unsigned char *verfname(unsigned char *filename,struct buf_ctl *buf_ctl,i
    } 
   return (ret_name);                       /* return file name */
  }
+
+
 int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
                  int duplicate)
  {
   div_t d;
   struct deviceinfo *idevice, *odevice;
-  unsigned char *status, *name, *tape_file_name;
+  unsigned char *status, *name, *tape_file_name=NULL;
   char *open_mode, *ctl, *hdr, *tlr;
   unsigned char input_type, copy_type;
-  int records, start, end;
-  int (*write_rtn)();
-  unsigned char *(*read_rtn)();
+  int start, end;
+  unsigned int records;
+  WRITE_RTN write_rtn;
+  READ_RTN read_rtn;
   unsigned char *trtable;
-  unsigned char *otrtable;
+  unsigned char *otrtable=NULL;
   unsigned char *file_prefix, *dir_prefix;
   unsigned char tape_file_name_c[4096];
   unsigned char tape_file_name_c2[4096];
@@ -2868,10 +3072,9 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
   unsigned char opath_name[4096];
   int i, len, file_num;
   double in_bytes, out_bytes;
-  void (*old_handler)();
-  int data_mode, data_transfer_mode;
+  void (*old_handler)(int)=NULL;
+  int data_transfer_mode;
   unsigned char *ipath, *opath;
-  char *action;
   unsigned int current_cut, bytes, test;
   
   ipath = (unsigned char *)in_buf_ctl->path;
@@ -2888,7 +3091,7 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
   if (out_buf_ctl->iofrom==2)
    {
     len=sizeof *odevice;
-    odevice=malloc(len);               
+    odevice = (struct deviceinfo *) malloc(len);               
 /*  memset(&odevice->name,'\0',len);             /  initialize */
     odevice->data_mode=outfile_recording_mode;    /* mark a stream device */
     write_rtn=&term_write;
@@ -2951,14 +3154,14 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
          }
        }
       len=sizeof *idevice;                  /* yes - get length control block */
-      idevice=malloc(len);                     /* get space for control block */
+      idevice = (struct deviceinfo *) malloc(len);    /* get space for control block */
       memset(idevice,'\0',len);                /* allocate control block */
-      idevice->file=NULL; 
+      idevice->file=0; 
       idevice->unixfile=NULL;
       if (in_buf_ctl->format[0] != '\0')
        {
-        idevice->file=open((char *)ipath_name,O_RDONLY); /* yep - opens as input? */ 
-         if (idevice->file == NULL)              /* yep - tell user can't open*/
+        idevice->file=open((char *)ipath_name,O_RDONLY|O_BINARY); /* yep - opens as input? */ 
+         if (idevice->file == 0)              /* yep - tell user can't open*/
          {
           issue_error_message(strcat(strcpy(message_area,strerror(errno)),"\n"));
           sprintf(message_area,"Could not open '%s'\n",ipath_name);
@@ -3048,7 +3251,7 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
       opath_name[len-1]='_';                /* yep - create names in this form*/
       file_prefix=opath_name;               /* set this to file prefix */
       opath=NULL;                           /* output path not defined yet */
-      odevice=malloc(len);               
+      odevice = (struct deviceinfo *) malloc(len);               
       memset(odevice,'\0',len);             /* initialize */
       odevice->data_mode=outfile_recording_mode;    /* mark a stream device */
      }
@@ -3064,7 +3267,7 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
       opath=opath_name;
       if (out_buf_ctl->copy_type==TAPE)    /* was this a tape? */
        {
-        if (tpopen(OUTPUT,opath_name) < 0) return(-1);/*yep - open if possible*/
+        if (tpopen(OUTPUT,opath_name,0,0) < 0) return(-1);/*yep - open if possible*/
         odevice=&tapeo;                  /* make this the default output tape */
        }
       else if (out_buf_ctl->copy_type==DIRECTORY) /* was this a directory? */
@@ -3072,17 +3275,22 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
         dir_prefix=opath_name;               /* yep - set directroy prefix */
         opath=NULL;                          /* output path not defined yet */
         len=sizeof *odevice;                 /* get control block for output */
-        odevice=malloc(len);               
+        odevice = (struct deviceinfo *) malloc(len);               
         memset(odevice,'\0',len);            /* initialize */
         odevice->data_mode=outfile_recording_mode;    /* mark a stream device */
        }
       else if (out_buf_ctl->copy_type==FILENAME)  /* output a file? */
        {
         len=sizeof *odevice;            /* yep - get control block for output */
-        odevice=malloc(len);
+        odevice = (struct deviceinfo *) malloc(len);
         memset(odevice,'\0',len);           /* zap control block */
         odevice->file=open((char *)opath_name, /*open file for output */
-                          O_RDWR|O_CREAT|O_TRUNC,S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+                          O_RDWR|O_CREAT|O_TRUNC|O_BINARY,
+#if SYSTEM == MSVC
+                          _S_IREAD | _S_IWRITE);
+#else
+                          S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+#endif
          if (odevice->file == -1)            /* could we open the file? */
          {
           sprintf(message_area,
@@ -3106,7 +3314,7 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
     if (odevice==NULL)                      /* output device defined */
      {
       len=sizeof *odevice;                 /* no - ready to copy to a file */
-      odevice=malloc(len);                 /* to be created */
+      odevice = (struct deviceinfo *) malloc(len);                 /* to be created */
       memset(odevice,'\0',len);
       odevice->data_mode=outfile_recording_mode;
      }
@@ -3196,7 +3404,12 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
         return (-1);
        }
       odevice->file=open((char *)tape_file_name,   /* open file */
-                         O_RDWR|O_CREAT|O_TRUNC,S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+          O_RDWR|O_CREAT|O_TRUNC|O_BINARY,
+#if SYSTEM == MSVC
+                         _S_IREAD | _S_IWRITE);
+#else
+                         S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
+#endif
       if (odevice->file==-1)
        {
         sprintf(message_area,
@@ -3211,7 +3424,7 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
      {
       odevice->need_trailer=OFF;                /* make sure this is off */
       signal(SIGINT,&myattn);                   /* active special interupt */   
-#if SYSTEM == OS4
+#if SYSTEM == OS4 || SYSTEM == MSVC || SYSTEM == CYGWIN
       old_handler = signal(SIGINT,SIG_IGN);
 #else
       sighold(SIGINT);
@@ -3234,7 +3447,7 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
       odevice->op[0]='\0';
       if (write_rtn == NULL) return(-1);
       odevice->need_trailer=ON; 
-#if SYSTEM == OS4
+#if SYSTEM == OS4 || SYSTEM == MSVC || SYSTEM == CYGWIN
       signal(SIGINT,old_handler);
 #else
       sigrelse(SIGINT);
@@ -3328,7 +3541,7 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
             (write_rtn == &dbs_write || write_rtn == &vbs_write))
          {
           odevice->eor=1; 
-          (write_rtn)(odevice,line_num_c,0);
+          (write_rtn)(odevice,(unsigned char *)line_num_c,0);
          }
         break;                                /* EOF - copy done */
        }
@@ -3351,10 +3564,10 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
             line_num_c[i]=otrtable[line_num_c[i]];
           if (in_buf_ctl->records_>0 && idevice->data_mode==STREAM) 
            {
-            test = out_bytes+len;
-            if (test  > in_buf_ctl->records_) len = in_buf_ctl->records_ - out_bytes;
+            test = (unsigned int)(out_bytes+len);
+            if (test  > in_buf_ctl->records_) len = (int)(in_buf_ctl->records_ - out_bytes);
            }
-          (write_rtn)(odevice,line_num_c,len); /* write out line number */
+          (write_rtn)(odevice,(unsigned char *)line_num_c,len); /* write out line number */
           out_bytes+=len;       /* update byte count */
          }
         else if (in_buf_ctl->linemode==2)      /* need line number in fixed chars? */
@@ -3369,10 +3582,10 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
             line_num_c[i]=otrtable[line_num_c[i]];
           if (in_buf_ctl->records_>0 && idevice->data_mode==STREAM) 
            {
-            test = out_bytes+len;
-            if (test > in_buf_ctl->records_) len = in_buf_ctl->records_ - out_bytes;
+            test = (unsigned int)(out_bytes+len);
+            if (test > in_buf_ctl->records_) len = (int)(in_buf_ctl->records_ - out_bytes);
            }
-          (write_rtn)(odevice,line_num_c,len); /* write out line number */
+          (write_rtn)(odevice,(unsigned char *)line_num_c,len); /* write out line number */
           out_bytes+=len;                       /* update byte count */
          }
         else if (in_buf_ctl->linemode==3)      /* write line as integer? */
@@ -3380,10 +3593,10 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
           len=4;
           if (in_buf_ctl->records_>0 && idevice->data_mode==STREAM) 
            {
-            test = out_bytes+len;
-            if (test > in_buf_ctl->records_) len = in_buf_ctl->records_ - out_bytes;
+            test = (unsigned int)(out_bytes+len);
+            if (test > in_buf_ctl->records_) len = (int)(in_buf_ctl->records_ - out_bytes);
            }
-          (write_rtn)(odevice,&in_buf_ctl->line_num,len); /* yes write line number */
+          (write_rtn)(odevice, (const unsigned char *)(&in_buf_ctl->line_num), len); /* yes write line number */
           out_bytes+=len;                          /* update byte count */
          }
        }
@@ -3393,8 +3606,8 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
         rec[i]=otrtable[rec[i]];
       if (in_buf_ctl->records_>0 && idevice->data_mode==STREAM) 
        {
-        test = out_bytes+in_buf_ctl->seg_len;
-        if (test > in_buf_ctl->records_) in_buf_ctl->seg_len = in_buf_ctl->records_ - out_bytes;
+        test = (unsigned int)(out_bytes+in_buf_ctl->seg_len);
+        if (test > in_buf_ctl->records_) in_buf_ctl->seg_len = (int)(in_buf_ctl->records_ - out_bytes);
        }
       (write_rtn)(odevice,rec,in_buf_ctl->seg_len); /* write out segment */
       in_bytes+=in_buf_ctl->seg_len;               /* update byte count */
@@ -3409,7 +3622,7 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
           if (out_buf_ctl->translate==ON)        /* translate newline if nec */
            for (i=0;i<len;i++)
             line_num_c[i]=otrtable[line_num_c[i]];
-          (write_rtn)(odevice,line_num_c,len);  /* write out newine seq */ 
+          (write_rtn)(odevice,(unsigned char *)line_num_c,len);  /* write out newine seq */ 
           out_bytes+=len;                       /* update byte count */
          }
        }
@@ -3433,7 +3646,7 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
        {
         if (in_buf_ctl->notify_>0)          /* need to give user notification?*/
          {
-          bytes=in_bytes/in_buf_ctl->notify_;
+          bytes = (unsigned int)(in_bytes/in_buf_ctl->notify_);
           if (bytes != current_cut)
            {
             postbytes(in_bytes);
@@ -3448,10 +3661,10 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
     i=copy_type;
     if (copy_type==DIRECTORY || copy_type==FILENAME)
      {
-      if (odevice->file != NULL)
+      if (odevice->file != 0)
        {
         close(odevice->file);                  /* if copying to a file close */
-        odevice->file=NULL;
+        odevice->file=0;
        }
      }
     else if (copy_type==TAPE)                /*if copying to a tape */
@@ -3490,7 +3703,7 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
          }
         else
          {
-          records=out_bytes;
+          records = (int)out_bytes;
           d = div(records,odevice->rec_len);
           if (d.rem >0) d.quot++;
           out_bytes=d.quot*odevice->rec_len;
@@ -3532,13 +3745,15 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
      }
    }
   if (copy_type==DIRECTORY || copy_type == FILENAME) 
-   if (odevice->file != NULL) 
+   if (odevice->file != 0) 
     close(odevice->file);                 /* close file */
   if (idevice != &tapei) free(idevice);   /* free control block */ 
   if (odevice != &tapeo) free(odevice);   /* free control block */ 
   signal(SIGINT,old_handler);       /* restore old signal handler */
   return (0);
  }
+
+
 int setfilename(char *file_name,struct deviceinfo * tape)
  {
   int i,len;
@@ -3587,6 +3802,8 @@ int setfilename(char *file_name,struct deviceinfo * tape)
   tape->newfile_name=ON;                    /* mark filename has been set */
   return (1);
  }
+
+
 char *getparameter(char *parameter,int to_upper)
  {
   char *return_value;
@@ -3601,6 +3818,8 @@ char *getparameter(char *parameter,int to_upper)
     return_value[i]=toupper(return_value[i]);
   return(return_value);
  }
+
+
 int listfunction(struct deviceinfo *tape, int start_file, int end_file, 
                  int docsw ,int datesw, int notify)
  {
@@ -3618,8 +3837,9 @@ int listfunction(struct deviceinfo *tape, int start_file, int end_file,
   div_t d;
   unsigned int current_cut, avg;
    
+  memset(&buf_ctl, 0, sizeof(buf_ctl));
+  
   cancel_command=OFF;
-  memset(&buf_ctl,sizeof(buf_ctl),'\0');
   buf_ctl.fs=0;                          /* don't activate fs processing yet */
          /* fiqure labeling  mode and active fs processing if necessary */
   if (tape->lp ==0) strcpy(type,"no label processing");
@@ -3627,6 +3847,7 @@ int listfunction(struct deviceinfo *tape, int start_file, int end_file,
   else if (tape->tape_type==IBM_LABEL) strcpy(type,"IBM labeled");
   else if (tape->tape_type==ANSI_LABEL) strcpy(type,"ANSI labeled");
   else if (tape->tape_type==TOS_LABEL) strcpy(type,"TOS labeled");
+  else if (tape->tape_type==VLO_LABEL) strcpy(type,"VLO labeled");
   else if (tape->tape_type==FS_UNLABELED)
    {strcpy(type,"unlabeled *FS");buf_ctl.fs=1;}
   else if (tape->tape_type==FS_IBMLABEL)
@@ -3654,7 +3875,8 @@ int listfunction(struct deviceinfo *tape, int start_file, int end_file,
       issue_warning_message(message_area);
       return(0);
      }
-    current_cut=records=buf_ctl.blocks=0;  /* initialize record & block count */    buf_ctl.max_blk=0;
+    current_cut=records=buf_ctl.blocks=0;  /* initialize record & block count */
+    buf_ctl.max_blk=0;
     bytes=0.0;                             /* initialize byte count */
     while (1)                              /* read through file */ 
      {
@@ -3695,7 +3917,7 @@ int listfunction(struct deviceinfo *tape, int start_file, int end_file,
       if (strcmp((char *)tape->format,"U") == 0)
        {
         if (buf_ctl.blocks==0) avg=0;
-        else avg=bytes/buf_ctl.blocks;
+        else avg = (unsigned int)(bytes/buf_ctl.blocks);
         sprintf(message_area,"File %5d %s format=%-16s %smax=%d avg=%d blks=%d bytes=%.0f\n",
              file_num,tape->file_name,type,date,buf_ctl.max_blk,avg,
              buf_ctl.blocks,bytes);
@@ -3728,7 +3950,7 @@ int listfunction(struct deviceinfo *tape, int start_file, int end_file,
       append_normal_message(message_area,output);
       yield_();
       if (cancel_command == ON) goto list_aborted;
-      records==0;
+      records = 0;
       if (docsw == 1 && tape->doc_len>0) /* need to print documentation */
        {
         offset=0;                           /* offset to start of doc */
@@ -3763,6 +3985,8 @@ int listfunction(struct deviceinfo *tape, int start_file, int end_file,
    issue_warning_message("List Aborted");
   return (-1);
  }
+
+
 long displayfunction(struct deviceinfo *tape,long blocks, long length,
                      long hex, long ebcd, long ascii)
  {
@@ -3771,9 +3995,9 @@ long displayfunction(struct deviceinfo *tape,long blocks, long length,
   unsigned char *buf;
   unsigned char buffer[1060];
   unsigned char segment[90];
-  unsigned char *(*read_rtn)();
+  READ_RTN read_rtn;
   div_t d;
-  char *type, *dev, *lp, *next, xfield[12];
+  char *type, *dev, *lp, *next, *drtype;
   int i, j, len, ints;
   int offset, seg_length, quanity, max_seglen;
   unsigned char *status;
@@ -3781,6 +4005,8 @@ long displayfunction(struct deviceinfo *tape,long blocks, long length,
   char *path_name;
   int records;
    
+  memset(&buf_ctl, 0, sizeof(buf_ctl));
+  
   cancel_command=OFF;
   if (tape->tape_type == FILESYSTEM)
    {
@@ -3840,6 +4066,7 @@ long displayfunction(struct deviceinfo *tape,long blocks, long length,
     else if (tape->tape_type == IBM_LABEL) type = "IBM labeled";
     else if (tape->tape_type == ANSI_LABEL) type = "ANSI labeled"; 
     else if (tape->tape_type == TOS_LABEL) type = "TOS labeled";
+    else if (tape->tape_type == VLO_LABEL) type = "VLO labeled";
     else if (tape->tape_type == FS_UNLABELED) type = "Unlabeled *FS";
     else if (tape->tape_type == FS_IBMLABEL) type = "IBM labeled *FS";
     else if (tape->tape_type == FS_VLOLABEL) type = "VLO labeled *FS";
@@ -3847,9 +4074,12 @@ long displayfunction(struct deviceinfo *tape,long blocks, long length,
     if (tape==&tapei) dev="Input";            /* set input/ouput type */
     else if (tape==&tapeo) dev="Output";
     else dev="Undefined";
+    if (tape->drive_type == DEV_AWSTAPE) drtype = "AWS";
+    else if (tape->drive_type == DEV_FAKETAPE) drtype = "Fake";
+    else drtype = "real";
       /* give info on device and volume label */
-    sprintf(message_area,"%s Tape,%s Device=%s, volume=%s, owner=%s\n",
-            type,dev,tape->name,tape->volume,tape->owner);
+    sprintf(message_area,"%s %s Tape,%s Device=%s, volume=%s, owner=%s\n",
+            type,drtype,dev,tape->name,tape->volume,tape->owner);
     append_normal_message(message_area,4);
     yield_();
     if (cancel_command == ON) goto display_abort;
@@ -3879,7 +4109,11 @@ long displayfunction(struct deviceinfo *tape,long blocks, long length,
       next=&message_area[strlen(message_area)];
       if (tape->trtable == EBCASC) sprintf(next," Trtable=EBCD");
       else if (tape->trtable == MTSASC) sprintf(next," Trtable=OLDMTS");
-      else sprintf(next," Trtable=undefined %d",tape->trtable);
+#if SYSTEM == MSVC
+      else sprintf(next, "Trtable=undefined");
+#else
+      else sprintf(next," Trtable=undefined %d", (int)(tape->trtable));
+#endif
      }
     else if (tape->translate ==OFF) sprintf(message_area," Translate=off,");
     else sprintf(message_area," Translate=undefined");
@@ -3889,8 +4123,8 @@ long displayfunction(struct deviceinfo *tape,long blocks, long length,
     else if(tape->data_mode==RECORD) sprintf(next,", Recording_mode=Record");
     else sprintf(next,", Recording_mode=undefined");
     next=&message_area[strlen(message_area)];
-    if (warn == OFF) sprintf(next,", Warn=off"); /* print warning mode */
-    else if (warn == ON) sprintf(next,", Warn=on");
+    if (show_warnings == OFF) sprintf(next,", Warn=off"); /* print warning mode */
+    else if (show_warnings == ON) sprintf(next,", Warn=on");
     else sprintf(next,", Warn=undefined");
     next=&message_area[strlen(message_area)];
     if (tape->datecheck == OFF) 
@@ -3947,7 +4181,8 @@ long displayfunction(struct deviceinfo *tape,long blocks, long length,
          sprintf((char*)buffer,"\nRecord %d\n",records);
          records++;
         }
-       append_normal_message(buffer,4);                     /* yep - skip line */      }
+       append_normal_message((char *)buffer, 4);   /* yep - skip line */      
+      }
      if (buf==NULL) 
       {
        append_normal_message("\n End of file reached\n",4);
@@ -3990,7 +4225,7 @@ long displayfunction(struct deviceinfo *tape,long blocks, long length,
              if (buf==NULL) 
               {
                append_normal_message("\n End of file reached\n",4);
-               return;                     /* if no block done */
+               return 0;                     /* if no block done */
               }
              buf=(read_rtn)(tape,&buf_ctl); /* read a block */
              if (buf!=NULL)
@@ -4020,7 +4255,7 @@ long displayfunction(struct deviceinfo *tape,long blocks, long length,
            ints=segment[j];                     /* invert if necessary */
            sprintf((char *)&buffer[k],"%2.2X",ints);    /* print next four bytes */
            k+=2;
-           if (k >= 1024) {buffer[k]='\0'; append_normal_message(buffer,4); k=0;}
+           if (k >= 1024) {buffer[k]='\0'; append_normal_message((char *)buffer,4); k=0;}
            if (cancel_command == ON) break;
           }
          buffer[k]='\n';
@@ -4043,7 +4278,7 @@ long displayfunction(struct deviceinfo *tape,long blocks, long length,
            if (isprint(segment[i])==0) buffer[k]='?'; /* not legal char? */
            else buffer[k]=segment[i];                /* else print legal char */
            k++;
-           if (k >= 1024) {buffer[k]='\0'; append_normal_message(buffer,4); k=0;}
+           if (k >= 1024) {buffer[k]='\0'; append_normal_message((char *)buffer,4); k=0;}
            if (cancel_command == ON) break;
           }
          buffer[k]='\n';
@@ -4067,7 +4302,7 @@ long displayfunction(struct deviceinfo *tape,long blocks, long length,
            if (isprint(segment[i])==0) buffer[k]='?'; /* not legal char? */
            else buffer[k]=segment[i];                /* else print legal char */
            k++;
-           if (k >= 1024) {buffer[k]='\0'; append_normal_message(buffer,4); k=0;}
+           if (k >= 1024) {buffer[k]='\0'; append_normal_message((char *)buffer,4); k=0;}
            if (cancel_command == ON) break;
           }
          buffer[k]='\n';
@@ -4076,7 +4311,7 @@ long displayfunction(struct deviceinfo *tape,long blocks, long length,
          if (cancel_command == ON) goto display_abort;
         }
        buffer[k]='\0';
-       append_normal_message(buffer,4); 
+       append_normal_message((char *)buffer,4); 
        offset+=seg_length;
        if (tape->data_mode == STREAM) {length-= seg_length; i+=seg_length;}
        yield_();
@@ -4092,17 +4327,22 @@ long displayfunction(struct deviceinfo *tape,long blocks, long length,
    issue_warning_message("Display Aborted");
   return (-1);
  }
+
+
 int dittofunction(char *tapename,long notify) 
  {
   struct buf_ctl input_ctl, output_ctl;
   int rc,blocking,translate,lp;
  
+  memset(&input_ctl, 0, sizeof(input_ctl));
+  memset(&output_ctl, 0, sizeof(output_ctl));
+  
   input_ctl.iofrom=output_ctl.iofrom=-1;
   input_ctl.translate=-1; /* translate mode not set */
   output_ctl.translate=-1; /* translate mode not set */
   input_ctl.path=NULL;  /* no pathname for input given */
   output_ctl.path=NULL; /* no pathname for output given */
-  output_ctl.warn=warn;
+  output_ctl.warn=show_warnings;
   input_ctl.linemode=0;           /* don't write out line numbers */
   input_ctl.trtable=NULL;         /* no overriding translate mode */
   input_ctl.format[0]=output_ctl.format[0]='\0';
@@ -4111,7 +4351,8 @@ int dittofunction(char *tapename,long notify)
   input_ctl.blocks_=output_ctl.blocks_=0;
   input_ctl.records_=output_ctl.records_=0;
   tapeo.label=UNLABELED;           /* set label type  to UNLABLELLED */
-  rc= tpopen(OUTPUT,(unsigned char *)tapename);      /* open and init tape */
+  tapeo.drive_type = DEV_AWSTAPE;  /* In case it's a simulated tape */            
+  rc= tpopen(OUTPUT,(unsigned char *)tapename,0,0);      /* open and init tape */
   if (rc<0) return(-1);
   tapeo.label=OFF;                  /* disarm labeling */
   blocking=tapei.blocking;
@@ -4127,30 +4368,41 @@ int dittofunction(char *tapename,long notify)
   tapei.translate=translate;
   lpfunction(&tapei,lp); 
   closetape(&tapeo); 
-  tpopen(OUTPUT,(unsigned char *)tapename);
+  tpopen(OUTPUT,(unsigned char *)tapename,0,0);
   return (1);
  }
-int setformat(struct deviceinfo *tape, struct buf_ctl buf_ctl) 
+
+
+int setformat(struct deviceinfo *tape, struct buf_ctl *buf_ctl) 
  { 
-  if (buf_ctl.fmchar[0]=='M' && tape->tape_type==ANSI_LABEL) /* legal FMCHAR? */
+  if (buf_ctl->fmchar[0]=='M' && tape->tape_type==ANSI_LABEL) /* legal FMCHAR? */
    {
     sprintf(message_area,"access method of M illegal for ANSI tapes\n");/* no */
     issue_error_message(message_area);
     return (-1);
    }  
-  tape->read_rtn=buf_ctl.read_rtn;              /* set read routine */
-  strcpy((char *)tape->format,(char *)buf_ctl.format); /*fill in control block*/
-  tape->block_len=buf_ctl.blk_len; 
-  tape->fmchar[0]=buf_ctl.fmchar[0];
-  tape->rec_len=buf_ctl.rec_len;
-  if (buf_ctl.fs==1) getfsname(tape);  /* if FS tape - get filesave name */ 
+  tape->read_rtn=buf_ctl->read_rtn;              /* set read routine */
+  strcpy((char *)tape->format,(char *)buf_ctl->format); /*fill in control block*/
+  tape->block_len=buf_ctl->blk_len; 
+  tape->fmchar[0]=buf_ctl->fmchar[0];
+  tape->rec_len=buf_ctl->rec_len;
+  if (buf_ctl->fs==1) getfsname(tape);  /* if FS tape - get filesave name */ 
   return (1);
- } 
+ }
+
+
 char *expirefunction(struct deviceinfo *tape, char *date)
  {
   char *rc;
-  struct tm tm, *tm2;
+  struct tm tm;
+
+#if SYSTEM == MSVC
+  /* This stupid thing doesn't work anyway so just punt.  It's only
+     used for the "expire" command */
+  rc = NULL;
+#else
   time_t now;
+  struct tm *tm2;
    
   rc=strptime(date,"%b%d%Y",&tm);  /* check for mmddyyyy */
   if (rc == NULL)
@@ -4195,6 +4447,7 @@ char *expirefunction(struct deviceinfo *tape, char *date)
       else tm.tm_year=tm2->tm_year;   /* all other cases */ 
      }
    }
+#endif
   if (rc == NULL)                    /*did  we recognize the date */
    {
     sprintf(message_area," '%s' is an unrecognized date form\n",date);
@@ -4208,6 +4461,8 @@ char *expirefunction(struct deviceinfo *tape, char *date)
   strftime(julian_date,20,"%b. %d, %Y",&tm);
   return(julian_date);
  }
+
+
 int blkpfxfunction(struct deviceinfo *tape,struct buf_ctl *buf_ctl, int blkpfx, int blkpfxl)
  {
   if (blkpfx <0 || blkpfx>99)        /* yep - legal value? */
@@ -4233,6 +4488,8 @@ int blkpfxfunction(struct deviceinfo *tape,struct buf_ctl *buf_ctl, int blkpfx, 
    }   
   return (1);
  }
+
+
 int lpfunction(struct deviceinfo *tape,int lp)
  {
   struct tapestats tapes;
@@ -4261,6 +4518,17 @@ int lpfunction(struct deviceinfo *tape,int lp)
     if (tape->tape_type == UNLABELED)     /* going to unlablled? */
      {
       tape->position=tapes.mt_fileno+1;    /* set Logical number = physical+1 */
+      tape->rd_hdr_rtn=&rd_nohdr;          /* reset in/out header put rtns */
+      tape->rd_tlr_rtn=NULL;
+      if (tape==&tapeo)
+       {
+        tape->wrt_hdr_rtn=&wrt_nohdr;
+        tape->wrt_tlr_rtn=&wrt_notlr;
+       }
+     }
+    else if (tape->tape_type == VLO_LABEL) /* going to VLO? */
+     {
+      tape->position=tapes.mt_fileno+2;    /* set Logical number = physical+2 */
       tape->rd_hdr_rtn=&rd_nohdr;          /* reset in/out header put rtns */
       tape->rd_tlr_rtn=NULL;
       if (tape==&tapeo)
@@ -4342,7 +4610,10 @@ int lpfunction(struct deviceinfo *tape,int lp)
     if (posn(tape,tape->position) == 1)         /* position to start of file */
      issue_warning_message("Warning Logical End of Tape indicated.\n");/* oops-LEOT */
    }
+  return 0;
  }
+
+
 int rewindfunction (struct deviceinfo *tape)
  {
   taperew(tape);
@@ -4350,6 +4621,8 @@ int rewindfunction (struct deviceinfo *tape)
   tape->leot=OFF;
   return (posn(tape,1));
  }
+
+
 int terminatefunction (struct deviceinfo *tape,int fileNumber)
  {
   int rc, lp, i;
@@ -4383,7 +4656,7 @@ int terminatefunction (struct deviceinfo *tape,int fileNumber)
     issue_error_message("Specified file does not exist\n");
     return(-1);
    }
-  if (fileNumber == 1);
+  if (fileNumber == 1)
    {
     if (tape->tape_type == IBM_LABEL || tape->tape_type == TOS_LABEL)
      {
@@ -4403,11 +4676,13 @@ int terminatefunction (struct deviceinfo *tape,int fileNumber)
    }
   tapebsf(tape,3);
   return 1;
- } 
+ }
+
+
 int juliantime(int time,struct tm *tm)
  {
   static int table[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
-  int  i, leap;
+  int  i;
   div_t d;
      
   d=div(time,1000);
@@ -4429,13 +4704,18 @@ int juliantime(int time,struct tm *tm)
     tm->tm_mday -= table[i];
    }
   tm->tm_mon=i;
+  return 0;
  }
+
+
 int getTranslateTable(struct deviceinfo *tape)
  {
   if (tape->trtable == EBCASC) return(0);
   if (tape->trtable == MTSASC) return(1);
   return(-1);
  }
+
+
 int setTranslateTable(struct deviceinfo *tape, int table)
  {
   unsigned char *itrtable, *otrtable;
@@ -4455,4 +4735,15 @@ int setTranslateTable(struct deviceinfo *tape, int table)
   if (tape == &tapeo) tape->otrtable=otrtable;
   else tape->otrtable=NULL;
   return (0);
+ }
+
+unsigned short swap_short(unsigned short s)
+ {
+  return ((s << 8) & 0xff00) + ((s >> 8) & 0x00ff);
+ }
+ 
+unsigned int swap_long(unsigned int x)
+ {
+  return ((x << 24) & 0xff000000) + ((x >> 24) & 0xff) +
+         ((x << 8) & 0xff0000) + ((x >> 8) & 0xff00);
  }
