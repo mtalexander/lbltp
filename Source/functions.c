@@ -4351,7 +4351,7 @@ int dittofunction(char *tapename,long notify)
   input_ctl.blocks_=output_ctl.blocks_=0;
   input_ctl.records_=output_ctl.records_=0;
   tapeo.label=UNLABELED;           /* set label type  to UNLABLELLED */
-  tapeo.drive_type = DEV_AWSTAPE;  /* In case it's a simulated tape */            
+  tapeo.drive_type = tapei.drive_type;  /* In case it's a simulated tape */            
   rc= tpopen(OUTPUT,(unsigned char *)tapename,0,0);      /* open and init tape */
   if (rc<0) return(-1);
   tapeo.label=OFF;                  /* disarm labeling */
