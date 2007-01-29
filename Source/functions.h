@@ -23,7 +23,7 @@ int listfunction(struct deviceinfo *tape, int start_file, int end_file,
                  int docsw ,int datesw, int notify);
 long displayfunction(struct deviceinfo *tape,long blocks, long length,
                      long hex, long ebcd, long ascii);
-int dittofunction(char *tapename,long notify);
+int dittofunction(char *tapename,long notify,int tape_type);
 int setformat(struct deviceinfo *tape, struct buf_ctl *buf_ctl);
 int blkpfxfunction(struct deviceinfo *tape,struct buf_ctl *buf_ctl, int blkpfx, int blkpfxl);
 int lpfunction(struct deviceinfo *tape,int lp);

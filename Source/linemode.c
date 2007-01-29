@@ -648,19 +648,38 @@ static int ditocmd(int parsc,unsigned char *parsv[])
   char *tapeowner, *tapevol, *equal;
   unsigned char *tapename;
   int i,j,len;
+  int tape_type;
  
   tapeowner="";                        /* default tape owner */
   tapevol=NULL;                        /* no volume given */
   tapename=NULL;                       /* no file/device name given */
+  tape_type = DEV_AWSTAPE;             /* Assume AWStape format, not FakeTape */
   for (i=1; i<= parsc; i++)            /* cycle through pars */
    {
     len=strlen((char *)parsv[i]);      /* length of parameter */
     for (j=0;j<len;j++) var_name[j]=toupper(parsv[i][j]); /* copy and trans */
     var_name[len]='\0';                /* terminate */
     equal=strpbrk((char *)var_name,"="); /* split into keyword/value */
-    if (equal==NULL && tapename==NULL) 
-     {tapename=parsv[i]; continue;}    /* this must the the device name */
-    else if (equal == NULL) goto parerr; /* something fishy going on */
+    if (equal==NULL) 
+     {
+       /* No equal sign in parameter */
+      if (len > 3 && strncmp((char *)var_name, "FAKETAPE", len) == 0)
+       {
+        tape_type = DEV_FAKETAPE;
+       }
+      else if (len > 2 && strncmp((char *)var_name, "AWSTAPE", len) == 0)
+       {
+        tape_type = DEV_AWSTAPE;
+       }
+      else if (tapename == NULL)
+       {
+        tapename = parsv[i];
+       }
+      else
+       goto parerr;
+      continue;
+     }
+       
     *equal='\0';                        /* terminate keyword */ 
     equal=strpbrk((char *)parsv[i],"="); /* point to prestart of value */
       parerr:
@@ -688,7 +707,7 @@ static int ditocmd(int parsc,unsigned char *parsv[])
     fprintf(stderr,"Input tape must be defined.\n");
     return (-1);
    }
-  return(dittofunction((char *)tapename, 0));
+  return(dittofunction((char *)tapename, 0, tape_type));
  }
 
 
