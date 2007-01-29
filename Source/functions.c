@@ -3561,7 +3561,7 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
           len++;                               /* include tab in count */
           if (out_buf_ctl->translate==ON)       /* translate if necessary */ 
            for (i=0;i<len;i++)
-            line_num_c[i]=otrtable[line_num_c[i]];
+            line_num_c[i]=otrtable[(int)line_num_c[i]];
           if (in_buf_ctl->records_>0 && idevice->data_mode==STREAM) 
            {
             test = (unsigned int)(out_bytes+len);
@@ -3579,7 +3579,7 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
           len=12;                               /* include tab in count */
           if (out_buf_ctl->translate==ON)       /* translate if necessary */ 
            for (i=0;i<len;i++)
-            line_num_c[i]=otrtable[line_num_c[i]];
+            line_num_c[i]=otrtable[(int)line_num_c[i]];
           if (in_buf_ctl->records_>0 && idevice->data_mode==STREAM) 
            {
             test = (unsigned int)(out_bytes+len);
@@ -3621,7 +3621,7 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
           len=strlen(line_num_c);    
           if (out_buf_ctl->translate==ON)        /* translate newline if nec */
            for (i=0;i<len;i++)
-            line_num_c[i]=otrtable[line_num_c[i]];
+            line_num_c[i]=otrtable[(int)line_num_c[i]];
           (write_rtn)(odevice,(unsigned char *)line_num_c,len);  /* write out newine seq */ 
           out_bytes+=len;                       /* update byte count */
          }
