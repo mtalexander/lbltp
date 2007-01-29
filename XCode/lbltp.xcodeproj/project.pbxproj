@@ -1,0 +1,253 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 42;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		6E4D285F0B6D9A0000CC55D1 /* fsrtns.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E4D285A0B6D9A0000CC55D1 /* fsrtns.c */; };
+		6E4D28600B6D9A0000CC55D1 /* functions.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E4D285B0B6D9A0000CC55D1 /* functions.c */; };
+		6E4D28610B6D9A0000CC55D1 /* linemode.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E4D285C0B6D9A0000CC55D1 /* linemode.c */; };
+		6E4D28620B6D9A0000CC55D1 /* machine.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E4D285D0B6D9A0000CC55D1 /* machine.c */; };
+		6E4D28630B6D9A0000CC55D1 /* vars.c in Sources */ = {isa = PBXBuildFile; fileRef = 6E4D285E0B6D9A0000CC55D1 /* vars.c */; };
+		6E4D286B0B6D9A0F00CC55D1 /* fsrtns.h in CopyFiles */ = {isa = PBXBuildFile; fileRef = 6E4D28640B6D9A0F00CC55D1 /* fsrtns.h */; };
+		6E4D286C0B6D9A0F00CC55D1 /* functions.h in CopyFiles */ = {isa = PBXBuildFile; fileRef = 6E4D28650B6D9A0F00CC55D1 /* functions.h */; };
+		6E4D286D0B6D9A0F00CC55D1 /* lbltp.h in CopyFiles */ = {isa = PBXBuildFile; fileRef = 6E4D28660B6D9A0F00CC55D1 /* lbltp.h */; };
+		6E4D286E0B6D9A0F00CC55D1 /* linemode.h in CopyFiles */ = {isa = PBXBuildFile; fileRef = 6E4D28670B6D9A0F00CC55D1 /* linemode.h */; };
+		6E4D286F0B6D9A0F00CC55D1 /* machine.h in CopyFiles */ = {isa = PBXBuildFile; fileRef = 6E4D28680B6D9A0F00CC55D1 /* machine.h */; };
+		6E4D28700B6D9A0F00CC55D1 /* translate.h in CopyFiles */ = {isa = PBXBuildFile; fileRef = 6E4D28690B6D9A0F00CC55D1 /* translate.h */; };
+		6E4D28710B6D9A0F00CC55D1 /* vars.h in CopyFiles */ = {isa = PBXBuildFile; fileRef = 6E4D286A0B6D9A0F00CC55D1 /* vars.h */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		8DD76FAF0486AB0100D96B5E /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 8;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+				6E4D286B0B6D9A0F00CC55D1 /* fsrtns.h in CopyFiles */,
+				6E4D286C0B6D9A0F00CC55D1 /* functions.h in CopyFiles */,
+				6E4D286D0B6D9A0F00CC55D1 /* lbltp.h in CopyFiles */,
+				6E4D286E0B6D9A0F00CC55D1 /* linemode.h in CopyFiles */,
+				6E4D286F0B6D9A0F00CC55D1 /* machine.h in CopyFiles */,
+				6E4D28700B6D9A0F00CC55D1 /* translate.h in CopyFiles */,
+				6E4D28710B6D9A0F00CC55D1 /* vars.h in CopyFiles */,
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		6E4D285A0B6D9A0000CC55D1 /* fsrtns.c */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.c; name = fsrtns.c; path = ../Source/fsrtns.c; sourceTree = SOURCE_ROOT; };
+		6E4D285B0B6D9A0000CC55D1 /* functions.c */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.c; name = functions.c; path = ../Source/functions.c; sourceTree = SOURCE_ROOT; };
+		6E4D285C0B6D9A0000CC55D1 /* linemode.c */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.c; name = linemode.c; path = ../Source/linemode.c; sourceTree = SOURCE_ROOT; };
+		6E4D285D0B6D9A0000CC55D1 /* machine.c */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.c; name = machine.c; path = ../Source/machine.c; sourceTree = SOURCE_ROOT; };
+		6E4D285E0B6D9A0000CC55D1 /* vars.c */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.c; name = vars.c; path = ../Source/vars.c; sourceTree = SOURCE_ROOT; };
+		6E4D28640B6D9A0F00CC55D1 /* fsrtns.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; name = fsrtns.h; path = ../Source/fsrtns.h; sourceTree = SOURCE_ROOT; };
+		6E4D28650B6D9A0F00CC55D1 /* functions.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; name = functions.h; path = ../Source/functions.h; sourceTree = SOURCE_ROOT; };
+		6E4D28660B6D9A0F00CC55D1 /* lbltp.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; name = lbltp.h; path = ../Source/lbltp.h; sourceTree = SOURCE_ROOT; };
+		6E4D28670B6D9A0F00CC55D1 /* linemode.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; name = linemode.h; path = ../Source/linemode.h; sourceTree = SOURCE_ROOT; };
+		6E4D28680B6D9A0F00CC55D1 /* machine.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; name = machine.h; path = ../Source/machine.h; sourceTree = SOURCE_ROOT; };
+		6E4D28690B6D9A0F00CC55D1 /* translate.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; name = translate.h; path = ../Source/translate.h; sourceTree = SOURCE_ROOT; };
+		6E4D286A0B6D9A0F00CC55D1 /* vars.h */ = {isa = PBXFileReference; fileEncoding = 30; lastKnownFileType = sourcecode.c.h; name = vars.h; path = ../Source/vars.h; sourceTree = SOURCE_ROOT; };
+		8DD76FB20486AB0100D96B5E /* lbltp */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = lbltp; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		8DD76FAD0486AB0100D96B5E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		08FB7794FE84155DC02AAC07 /* lbltp */ = {
+			isa = PBXGroup;
+			children = (
+				08FB7795FE84155DC02AAC07 /* Source */,
+				6E4D28560B6D99D700CC55D1 /* Headers */,
+				C6A0FF2B0290797F04C91782 /* Documentation */,
+				1AB674ADFE9D54B511CA2CBB /* Products */,
+			);
+			name = lbltp;
+			sourceTree = "<group>";
+		};
+		08FB7795FE84155DC02AAC07 /* Source */ = {
+			isa = PBXGroup;
+			children = (
+				6E4D285A0B6D9A0000CC55D1 /* fsrtns.c */,
+				6E4D285B0B6D9A0000CC55D1 /* functions.c */,
+				6E4D285C0B6D9A0000CC55D1 /* linemode.c */,
+				6E4D285D0B6D9A0000CC55D1 /* machine.c */,
+				6E4D285E0B6D9A0000CC55D1 /* vars.c */,
+			);
+			name = Source;
+			sourceTree = "<group>";
+		};
+		1AB674ADFE9D54B511CA2CBB /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				8DD76FB20486AB0100D96B5E /* lbltp */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		6E4D28560B6D99D700CC55D1 /* Headers */ = {
+			isa = PBXGroup;
+			children = (
+				6E4D28640B6D9A0F00CC55D1 /* fsrtns.h */,
+				6E4D28650B6D9A0F00CC55D1 /* functions.h */,
+				6E4D28660B6D9A0F00CC55D1 /* lbltp.h */,
+				6E4D28670B6D9A0F00CC55D1 /* linemode.h */,
+				6E4D28680B6D9A0F00CC55D1 /* machine.h */,
+				6E4D28690B6D9A0F00CC55D1 /* translate.h */,
+				6E4D286A0B6D9A0F00CC55D1 /* vars.h */,
+			);
+			name = Headers;
+			sourceTree = "<group>";
+		};
+		C6A0FF2B0290797F04C91782 /* Documentation */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Documentation;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		8DD76FA90486AB0100D96B5E /* lbltp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1DEB928508733DD80010E9CD /* Build configuration list for PBXNativeTarget "lbltp" */;
+			buildPhases = (
+				8DD76FAB0486AB0100D96B5E /* Sources */,
+				8DD76FAD0486AB0100D96B5E /* Frameworks */,
+				8DD76FAF0486AB0100D96B5E /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = lbltp;
+			productInstallPath = "$(HOME)/bin";
+			productName = lbltp;
+			productReference = 8DD76FB20486AB0100D96B5E /* lbltp */;
+			productType = "com.apple.product-type.tool";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		08FB7793FE84155DC02AAC07 /* Project object */ = {
+			isa = PBXProject;
+			buildConfigurationList = 1DEB928908733DD80010E9CD /* Build configuration list for PBXProject "lbltp" */;
+			hasScannedForEncodings = 1;
+			mainGroup = 08FB7794FE84155DC02AAC07 /* lbltp */;
+			projectDirPath = "";
+			targets = (
+				8DD76FA90486AB0100D96B5E /* lbltp */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		8DD76FAB0486AB0100D96B5E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6E4D285F0B6D9A0000CC55D1 /* fsrtns.c in Sources */,
+				6E4D28600B6D9A0000CC55D1 /* functions.c in Sources */,
+				6E4D28610B6D9A0000CC55D1 /* linemode.c in Sources */,
+				6E4D28620B6D9A0000CC55D1 /* machine.c in Sources */,
+				6E4D28630B6D9A0000CC55D1 /* vars.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		1DEB928608733DD80010E9CD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COPY_PHASE_STRIP = NO;
+				GCC_CHAR_IS_UNSIGNED_CHAR = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_ENABLE_FIX_AND_CONTINUE = YES;
+				GCC_MODEL_TUNING = G5;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_WARN_ABOUT_MISSING_PROTOTYPES = YES;
+				INSTALL_PATH = /usr/local/bin;
+				PRODUCT_NAME = lbltp;
+				SKIP_INSTALL = YES;
+				WARNING_CFLAGS = "-Wall";
+				ZERO_LINK = YES;
+			};
+			name = Debug;
+		};
+		1DEB928708733DD80010E9CD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = (
+					ppc,
+					i386,
+				);
+				GCC_CHAR_IS_UNSIGNED_CHAR = YES;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
+				GCC_MODEL_TUNING = G5;
+				GCC_WARN_ABOUT_MISSING_PROTOTYPES = YES;
+				INSTALL_PATH = /usr/local/bin;
+				PRODUCT_NAME = lbltp;
+				WARNING_CFLAGS = "-Wall";
+			};
+			name = Release;
+		};
+		1DEB928A08733DD80010E9CD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				PREBINDING = NO;
+				SDKROOT = /Developer/SDKs/MacOSX10.4u.sdk;
+			};
+			name = Debug;
+		};
+		1DEB928B08733DD80010E9CD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				PREBINDING = NO;
+				SDKROOT = /Developer/SDKs/MacOSX10.4u.sdk;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1DEB928508733DD80010E9CD /* Build configuration list for PBXNativeTarget "lbltp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1DEB928608733DD80010E9CD /* Debug */,
+				1DEB928708733DD80010E9CD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1DEB928908733DD80010E9CD /* Build configuration list for PBXProject "lbltp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1DEB928A08733DD80010E9CD /* Debug */,
+				1DEB928B08733DD80010E9CD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 08FB7793FE84155DC02AAC07 /* Project object */;
+}
