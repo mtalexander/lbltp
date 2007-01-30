@@ -3671,7 +3671,7 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
      wrt_tlr(odevice);                       /* flush and write out trailer */
     if (copy_type==TERMINAL) append_normal_message("\n",4); 
     if (input_type == TAPE ||
-        (idevice->tape_type=FILESYSTEM && idevice->format[0] != '\0')) /* print stats */
+        (idevice->tape_type==FILESYSTEM && idevice->format[0] != '\0')) /* print stats */
      {
       if (idevice->data_mode==RECORD)
        sprintf(message_area, "   %d blocks %d records %.0f bytes",

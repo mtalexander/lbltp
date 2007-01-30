@@ -243,7 +243,7 @@ int tpread(struct deviceinfo *tape,unsigned char *buf,unsigned int len)
          }
         bdw = strtol(length,&stopchar,10);                /* numeric form */    
         if (bdw < 8 || bdw>tape->block_len || bdw > len_read ||
-            ((tape->format[1]='S' || tape->format[2]=='S') && bdw <9))
+            ((tape->format[1]=='S' || tape->format[2]=='S') && bdw <9))
          {
           if (bdw<8) 
            issue_ferror_message("Block descriptor word length than 8 encountered\n");
