@@ -775,6 +775,16 @@ int posn(struct deviceinfo *tape, int tposn)
   return ((*tape->rd_hdr_rtn)(tape,truefile)); /*else read header and return*/
  }
 
+/* Convert a yyddd character string into a date */
+static int hdr_date_to_int(char *datestring)
+ {
+  int date = atoi(datestring);
+  if (date > 0 && date < 55000)
+   /* Labeled tapes didn't exist before about 1955, so assume any date
+      before then is in the 21st century. */
+   date += 100000;
+  return date;
+ }
 
 static int rd_nohdr(struct deviceinfo *tape,int posn)
  { 
@@ -910,10 +920,10 @@ static int rd_ibmhdr(struct deviceinfo *tape,int posn)
   memcpy(leng,tape->hdr2+10,5);             /* copy record length */
   tape->rec_len=atoi(leng);                 /* get numeric value */
   memcpy(leng,tape->hdr1+41,6);             /* get creation date */
-  tape->create_date=atoi(leng);             /* change to numeric value */
   leng[6]='\0';                             /* terminate create date */
+  tape->create_date=hdr_date_to_int(leng);  /* change to numeric value */
   memcpy(leng,tape->hdr1+47,6);             /* get expiration date */
-  tape->cur_expiration=atoi(leng);          /* change to numeric value */
+  tape->cur_expiration=hdr_date_to_int(leng); /* change to numeric value */
   tape->format[0]='\0';                     /* initial tape format */
   tape->format[1]='\0';
   if (tape->hdr2[4]=='U') tape->format[0]='U';/* get first character of format*/
@@ -1015,11 +1025,10 @@ static int rd_ansihdr(struct deviceinfo *tape,int posn)
   memcpy(leng,tape->hdr2+10,5);             /* record length (char) */
   tape->rec_len=atoi(leng);                 /* record length numeric */
   memcpy(leng,tape->hdr1+41,6);             /* creation date (julian char) */
-  tape->create_date=atoi(leng);             /* creation date numeric */
   leng[6]='\0';                             /* terminate */
+  tape->create_date=hdr_date_to_int(leng);  /* creation date numeric */
   memcpy(leng,tape->hdr1+47,6);             /* expiration date (julian char) */
-  leng[6]='\0';                             /* terminate */
-  tape->cur_expiration=atoi(leng);          /* expiration date numeric */
+  tape->cur_expiration=hdr_date_to_int(leng); /* expiration date numeric */
   tape->blkpfx=atoi(strncpy((char *)tape->format,(char *)tape->hdr2+50,2));/*pfx length */
   memset(tape->format,'\0',3);              /* zap format */
   if (tape->hdr2[4]=='U') tape->format[0]='U'; /* pick of first char of format*/
@@ -1065,7 +1074,7 @@ static int rd_toshdr(struct deviceinfo *tape,int posn)
        /* just in case - disable block prefixing */
   tape->blkpfx=tape->blkpfxl=tape->blkpfxs=0;
   tape->file_name[0]='\0';                  /* current file name  not defined */
-  tape->cur_expiration=tape->create_date;   /* current expiration not defined */
+  tape->cur_expiration=tape->create_date=0; /* current expiration not defined */
   len=0;
   if (posn==0) len=tpread(tape,tape->buffer,32768*2); /* if SOT skip volume label */
   if (len < 0)
@@ -2921,7 +2930,7 @@ static int getfname(struct deviceinfo *tape)
     {
      memcpy(tape->file_name,&tape->hdr1[4],17); /* get name from header */
      date_c[6]='\0';                       
-     date=atoi(strncpy((char *)date_c,(char *)&tape->hdr1[41],6)); /* cre date*/
+     date=hdr_date_to_int(strncpy((char *)date_c,(char *)&tape->hdr1[41],6)); /* cre date*/
      if (date< TDATE)
       {
        tape->trtable=MTSASC;                    /* set trtable using date */
