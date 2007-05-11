@@ -3072,7 +3072,6 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
   unsigned int records;
   WRITE_RTN write_rtn;
   READ_RTN read_rtn;
-  unsigned char *trtable;
   unsigned char *otrtable=NULL;
   unsigned char *file_prefix, *dir_prefix;
   unsigned char tape_file_name_c[4096];
@@ -3105,7 +3104,6 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
     odevice->data_mode=outfile_recording_mode;    /* mark a stream device */
     write_rtn=&term_write;
    }
-  trtable=NULL;                          /* no over riding translate table */
   if (ipath != NULL)                            /* INPUT parameter used? */
    {
     char *path_name;
@@ -3243,7 +3241,10 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
     input_type=TAPE;                        /* input is from tape */
    }
   if (in_buf_ctl->translate==-1)                 /* user specify translation mode?*/
-   in_buf_ctl->translate=idevice->translate; /* yep - set translate mode */
+  {
+   in_buf_ctl->translate=idevice->translate; /* no - set translate mode */
+   in_buf_ctl->trtable=idevice->trtable;
+  }
   file_prefix=(unsigned char*)"";           /* set file prefix to empty string*/
   out_buf_ctl->copy_type=FILENAME;          /* This is the default copy mode */
   if (out_buf_ctl->iofrom==2)
@@ -3468,7 +3469,6 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
         odevice->format[0]=tolower(odevice->format[0]);
         write_rtn=&u_write;
        }
-      if (trtable != NULL) idevice->trtable=trtable; /* set trtable if set */
       odevice->arec_len=odevice->offset=0;          /* initialize some fields */
       odevice->rem_len=odevice->block_len;
      }
@@ -3555,7 +3555,7 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
         break;                                /* EOF - copy done */
        }
       if (in_buf_ctl->translate==ON) for (i=0;i< in_buf_ctl->seg_len;i++) /*translate*/ 
-       rec[i]=idevice->trtable[rec[i]];        /* record if needed */
+       rec[i]=in_buf_ctl->trtable[rec[i]];      /* record if needed */
       if (read_rtn==&mts_fsread && in_buf_ctl->sor==1) /* from FS tape and SOR */
        {
         if (in_buf_ctl->linemode==1)            /* need line number in chars? */
