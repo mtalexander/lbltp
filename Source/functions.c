@@ -1255,7 +1255,8 @@ static WRITE_RTN wrt_ibmhdr(struct deviceinfo *tape)
     return (NULL);
    }
   if (validate_format(tape) == NULL) return(NULL); /* finsh format valiation */
-  tape->hdr2[36]=tape->fmchar[0];                  /* put in CC infor */
+  if (tape->fmchar[0]=='\0') tape->hdr2[36] = ' '; /* put in CC infor */
+  else tape->hdr2[36]=tape->fmchar[0];
   len=strlen((char *)tape->format);
   if (len==2) tape->hdr2[38]=tape->format[1];      /* fill in blocking info */
   else if (len==3) tape->hdr2[38]='R';
@@ -1369,7 +1370,8 @@ static WRITE_RTN wrt_ansihdr(struct deviceinfo *tape)
   tape->span=0;                                 /* spanning format? */
   if (tape->format[1]=='S' || tape->format[2] == 'S') tape->span=1;
   if (validate_format(tape) == NULL) return(NULL); /* validate format */
-  tape->hdr2[36]=tape->fmchar[0];               /* fill in CC char */
+  if (tape->fmchar[0]=='\0') tape->hdr2[36] = ' '; /* put in CC infor */
+  else tape->hdr2[36]=tape->fmchar[0];                  
   len=strlen((char *)tape->format);             /* fill in blocking info */
   if (len==2) tape->hdr2[38]=tape->format[1];
   else if (len==3) tape->hdr2[38]='R';
