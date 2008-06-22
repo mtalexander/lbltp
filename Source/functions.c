@@ -779,11 +779,31 @@ int posn(struct deviceinfo *tape, int tposn)
 static int hdr_date_to_int(char *datestring)
  {
   int date = atoi(datestring);
-  if (date > 0 && date < 55000)
-   /* Labeled tapes didn't exist before about 1955, so assume any date
-      before then is in the 21st century. */
-   date += 100000;
+  if (datestring[0] == ' ')
+   {
+   /* Starts with a blank, should be 19xx, but check */
+   if (date > 0 && date < 55000)
+    /* Labeled tapes didn't exist before about 1955, so assume any date
+       before then is in the 21st century. */
+    date += 100000;
+   } else {
+    /* Starts with a number, 0=>20xx, 1=>21xx, etc. */
+    /* Note that for a while lbltp was incorrectly recording 20xx dates
+       as 1ccddd.  There shouldn't be many data sets with this problem around
+       and I'm not doing anything about them here. */
+    date += 100000;
+   }
   return date;
+ }
+ 
+ static void tm_to_hdr_date(struct tm *tm, char *datestring)
+ {
+  if (tm->tm_year < 100)
+   /* Before year 2000 */
+   sprintf(datestring, " %02d%03d", tm->tm_year, tm->tm_yday+1);
+  else
+   /* Year 2000 or later */
+   sprintf(datestring,"%03d%03d", tm->tm_year-100, tm->tm_yday+1);
  }
 
 static int rd_nohdr(struct deviceinfo *tape,int posn)
@@ -1228,9 +1248,8 @@ static WRITE_RTN wrt_ibmhdr(struct deviceinfo *tape)
   memcpy(&tape->hdr1[27],"0001",4);            /* always 0001 */
   sprintf((char *)tape->buffer,"%04d",tape->position); /* fill in tape file # */
   memcpy(&tape->hdr1[31],tape->buffer,4);
-  sprintf((char *)tape->buffer,"%03d%03d",tm->tm_year,tm->tm_yday+1); /* cre date */
+  tm_to_hdr_date(tm, (char *)tape->buffer);    /* cre date */
   memcpy(&tape->hdr1[41],tape->buffer,6);
-  if (tape->hdr1[41]=='0') tape->hdr1[41]=' '; /*if first char 0 change to ' '*/
   memcpy(&tape->hdr1[47],tape->expiration,6);  /* fill in expiration date */
   tape->hdr1[53]='0';                          /* always 0 */
   memcpy(&tape->hdr1[54],"000000",6);          /* Block count always 0 hdr */
@@ -1333,9 +1352,8 @@ static WRITE_RTN wrt_ansihdr(struct deviceinfo *tape)
   memcpy(&tape->hdr1[27],"0001",4);              /* always 0001 */
   sprintf((char *)tape->buffer,"%04d",tape->position); /* fill in file number */
   memcpy(&tape->hdr1[31],tape->buffer,4);
-  sprintf((char *)tape->buffer,"%03d%03d",tm->tm_year,tm->tm_yday+1);/* fill  */
+  tm_to_hdr_date(tm, (char *)tape->buffer);      /* fill in creation date */
   memcpy(&tape->hdr1[41],tape->buffer,6);             /* creation date */ 
-  if (tape->hdr1[41]=='0') tape->hdr1[41]=' ';  /* start 0 change to ' ' */
   memcpy(&tape->hdr1[47],tape->expiration,6);   /* fill in expiration date */
   tape->hdr1[53]='0';                           /* always 0 */
   memcpy(&tape->hdr1[54],"000000",6);          /* fill block count - zero hdr */
@@ -1445,9 +1463,8 @@ static WRITE_RTN wrt_toshdr(struct deviceinfo *tape)
   memcpy(&tape->hdr1[27],"0001",4);         /* always 0001 */
   sprintf((char *)tape->buffer,"%04d",tape->position); /* fill in file number */
   memcpy(&tape->hdr1[31],tape->buffer,4);
-  sprintf((char *)tape->buffer,"%03d%03d",tm->tm_year,tm->tm_yday+1);/*fill in*/
+  tm_to_hdr_date(tm, (char *)tape->buffer); /* fill in creation date */
   memcpy(&tape->hdr1[41],tape->buffer,6);             /* creation date */
-  if (tape->hdr1[41]=='0') tape->hdr1[41]=' ';
   memcpy(&tape->hdr1[47],tape->expiration,6); /* fill in expiration date */
   tape->hdr1[53]='0';                       /* always 0 */
   memcpy(&tape->hdr1[54],"000000",6);       /* fill in block count - zero hdr */
@@ -4161,7 +4178,7 @@ long displayfunction(struct deviceinfo *tape,long blocks, long length,
        {
         juliantime(tape->cur_expiration,&tm);
         strftime(date,20,"%b %d, %Y",&tm);
-        strcat(strcpy(message_area,", Expiration date="),date);
+        strcat(strcat(message_area,", Expiration date="),date);
        }
       strcat(message_area,"\n");
       append_normal_message(message_area,4);
@@ -4466,8 +4483,7 @@ char *expirefunction(struct deviceinfo *tape, char *date)
     return(rc);
    }
   mktime(&tm);                     /* transform to julian form */
-  sprintf(julian_date,"%03d%03d",tm.tm_year,tm.tm_yday+1); /* in char */
-  if (julian_date[0]=='0') julian_date[0]=' '; /*change leading zero to ' ' */
+  tm_to_hdr_date(&tm, julian_date); /* in char */
   memcpy(tape->expiration,julian_date,6); /* save for header */
   strftime(julian_date,20,"%b. %d, %Y",&tm);
   return(julian_date);
@@ -4707,7 +4723,7 @@ int juliantime(int time,struct tm *tm)
   tm->tm_min=0;
   tm->tm_hour=0;
   if (d.quot % 400 == 0 ||
-      (d.quot %4 ==0 && d.quot %400 !=0)) table[1]=29;     
+      (d.quot %4 ==0 && d.quot %100 !=0)) table[1]=29;     
   else table[1]=28; 
   for (i=0; i<12; i++) 
    {
