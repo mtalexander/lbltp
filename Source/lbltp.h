@@ -42,7 +42,9 @@
 #define BYTE_SWAPPED
 #elif defined(__MWERKS__) || defined(__APPLE__)
 #define SYSTEM DARWIN
-/* Not byte swapped */
+#if __LITTLE_ENDIAN__
+#define BYTE_SWAPPED
+#endif
 #elif defined(__MINGW32__) || defined(__CYGWIN__)
 #define SYSTEM CYGWIN
 #define BYTE_SWAPPED
