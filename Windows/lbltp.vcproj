@@ -113,19 +113,19 @@
 			Filter="cpp;c;cxx;def;odl;idl;hpj;bat;asm;asmx"
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}">
 			<File
-				RelativePath="..\fsrtns.c">
+				RelativePath="..\Source\fsrtns.c">
 			</File>
 			<File
-				RelativePath="..\functions.c">
+				RelativePath="..\Source\functions.c">
 			</File>
 			<File
-				RelativePath="..\linemode.c">
+				RelativePath="..\Source\linemode.c">
 			</File>
 			<File
-				RelativePath="..\machine.c">
+				RelativePath="..\Source\machine.c">
 			</File>
 			<File
-				RelativePath="..\vars.c">
+				RelativePath="..\Source\vars.c">
 			</File>
 		</Filter>
 		<Filter
@@ -133,25 +133,25 @@
 			Filter="h;hpp;hxx;hm;inl;inc;xsd"
 			UniqueIdentifier="{93995380-89BD-4b04-88EB-625FBE52EBFB}">
 			<File
-				RelativePath="..\fsrtns.h">
+				RelativePath="..\Source\fsrtns.h">
 			</File>
 			<File
-				RelativePath="..\functions.h">
+				RelativePath="..\Source\functions.h">
 			</File>
 			<File
-				RelativePath="..\lbltp.h">
+				RelativePath="..\Source\lbltp.h">
 			</File>
 			<File
-				RelativePath="..\linemode.h">
+				RelativePath="..\Source\linemode.h">
 			</File>
 			<File
-				RelativePath="..\machine.h">
+				RelativePath="..\Source\machine.h">
 			</File>
 			<File
-				RelativePath="..\translate.h">
+				RelativePath="..\Source\translate.h">
 			</File>
 			<File
-				RelativePath="..\vars.h">
+				RelativePath="..\Source\vars.h">
 			</File>
 		</Filter>
 		<Filter
