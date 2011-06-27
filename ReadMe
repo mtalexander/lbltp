@@ -30,3 +30,8 @@ In addition to a large number of internal changes necessary to get it to build w
 
 8. It works on Mac OS X (i.e. Darwin) and Windows.  Neither platform supports real tapes, only virtual tapes are supported.  The Darwin version builds with either CodeWarrior 9 or XCode 1.5 (there is also a make file to build it directly with gcc).  The Windows version builds with either MSVC 7.1 or Cygwin.
 
+    Mike Alexander
+    mta@umich.edu
+    
+    27 June, 2011
+    
