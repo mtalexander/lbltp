@@ -1,4 +1,16 @@
-This directory contains version 1.2 of lbltp, a command line program to read and write tapes, both real and virtual, on several platforms.  There are binaries for Windows and Mac OS X included.  It is also possible to build it on various other Unix based platforms.
+This directory contains version 1.3 of lbltp, a command line program to read and write tapes, both real and virtual, on several platforms.  There are binaries for Windows and Mac OS X included.  It is also possible to build it on various other Unix based platforms.
+
+The changes made between version 1.2 and 1.3 include:
+
+1. Add a {faketape|awstape} parameter to the ditto command to control the format of the tape created.
+
+2. Make the "trans(xxx)" parameter on the copy command work.
+
+3. Put the correct code (blank instead of null) in the "Control Character" (offset 36) field in HDR2 records for the default case of no CC.
+
+4. Change the dates in header labels to conform to the IBM standard where 20th century
+dates are " yyddd", 21st century dates are "0yyddd", 22nd century dates are "1yyddd", etc.  Any year before 55 is assumed to be a 21st century date.
+
 
 In addition to a large number of internal changes necessary to get it to build without warnings on various platforms and compilers, these externally visible changes have been made to lbltp between version 1.1 and 1.2:
 
