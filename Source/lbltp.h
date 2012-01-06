@@ -48,6 +48,9 @@
 #elif defined(__MINGW32__) || defined(__CYGWIN__)
 #define SYSTEM CYGWIN
 #define BYTE_SWAPPED
+#elif defined(LINUX)
+#define SYSTEM LINUX
+#define BYTE_SWAPPED
 #else
 #error "What system is it?"
 #endif
