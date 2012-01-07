@@ -194,7 +194,7 @@ typedef struct fs_checksum_struct
  {
   unsigned short file_number;     /* First FS file on tape is file 1 */
   unsigned short block_number;    /* Header is block 0 */
-  unsigned long checksum;         /* Logical sum of entire block */
+  unsigned int checksum;         /* Logical sum of entire block */
   unsigned short block_length;    /* Length including checksum area */
   unsigned short reserved;
  } fs_checksum;

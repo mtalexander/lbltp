@@ -180,7 +180,7 @@ extern int getfsname(struct deviceinfo *tape)
 int checksum(struct deviceinfo *tape, int len, int header)
  {
   fs_checksum *cksum_info;
-  unsigned long save_checksum, checksum;
+  unsigned int save_checksum, checksum;
   int padlen, i;
   
   if (header)
@@ -214,7 +214,7 @@ int checksum(struct deviceinfo *tape, int len, int header)
    tape->buffer[len - 1 + padlen--] = '\0';
   checksum = 0;
   for (i = 0; i < (len + 3) / 4; i++)
-   checksum += etohl(((unsigned long *)tape->buffer)[i]);
+   checksum += etohl(((unsigned int *)tape->buffer)[i]);
   /* Put the checksum back and check the result */
   cksum_info->checksum = save_checksum;
   if (checksum != etohl(save_checksum))
