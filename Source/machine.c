@@ -61,9 +61,9 @@ int read_ibg(struct deviceinfo *tape,
    test = (unsigned)len_prev ^ (unsigned)len_this;   /* calculate check word */
    if (test != (unsigned)len_check)                                            
     return -1;                                         /* valdate check word */
-   if (len_prev <0 || len_prev > 65535)                                        
+   if (len_prev > 65535)                                        
     return -1;                                            /* valdate lengths */
-   if (len_this <0 || len_this > 65535)                                        
+   if (len_this > 65535)                                        
     return -1;                                           /* validate lengths */ 
   }
  else if (tape->drive_type == DEV_AWSTAPE)
@@ -218,13 +218,13 @@ int tpread(struct deviceinfo *tape,unsigned char *buf,unsigned int len)
           unsigned int len;
           for (len=0;bdw+len<len_read-2; len++)
            if (memcmp(buf+bdw+len,"\0\0",2) == 0) break;
-          len=len-2;
-          if (len <0)
+          if (len < 2)
            {
             issue_ferror_message("Could not find start of next block\n");
             tape->fatal=1;
             return(-1);
            }
+          len=len-2;
           bdw+= len;
           seek_len = (short int)bdw - (int)len_read;
           len_read=bdw; 
@@ -708,7 +708,7 @@ int tapebsf(struct deviceinfo *tape, int count)
           continue;                      /* do next BSF */
          } 
         skip_ibg(tape, -2);              /* back up over two IBGs */
-        seek_len=- (int)len_prev;        /* back up over prev rec  */
+        seek_len= -(int)len_prev;        /* back up over prev rec  */
         lseek(tape->file,seek_len,SEEK_CUR);
        }
        return 0;
