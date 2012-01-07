@@ -1,3 +1,5 @@
+#include "lbltp.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -9,8 +11,6 @@
 #include <errno.h>
 #include <time.h>
 #include <limits.h>
-
-#include "lbltp.h"
 
 #if SYSTEM != MSVC
 #ifdef __MWERKS__

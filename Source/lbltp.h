@@ -51,6 +51,7 @@
 #define BYTE_SWAPPED
 #elif defined(__linux__)
 #define SYSTEM LINUX
+#define _XOPEN_SOURCE 500   /* POSIX and XPG things */
 #include <endian.h>
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 #define BYTE_SWAPPED
@@ -93,6 +94,8 @@
 #if SYSTEM != MSVC && SYSTEM != CYGWIN
 #define O_BINARY 0
 #endif
+
+#include <stdio.h>
 
 typedef unsigned short HWORD;
 typedef unsigned char BYTE;

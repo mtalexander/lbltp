@@ -1,3 +1,5 @@
+#include "lbltp.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -5,8 +7,6 @@
 #include <ctype.h>
 #include <errno.h>
 #include <sys/types.h>
-
-#include "lbltp.h"
 
 #if SYSTEM != MSVC
 #include <sys/ioctl.h>

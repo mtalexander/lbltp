@@ -1,17 +1,18 @@
+#include "lbltp.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
-#include <signal.h>
 #include <errno.h>  
 #include <limits.h>
 #include <time.h>
 
-#include "lbltp.h"
 #include "vars.h"
 #include "linemode.h"
 #include "functions.h"
 #include "machine.h"
+#include <signal.h>     /* Must come after lbltp.h */
 
 /* Internal methods */
 static int cmdparse(unsigned char *,unsigned char *a[]);

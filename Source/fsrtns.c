@@ -1,9 +1,9 @@
+#include "lbltp.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
-
-#include "lbltp.h"
 
 #include "vars.h"
 #include "fsrtns.h"
