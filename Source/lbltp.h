@@ -37,6 +37,7 @@
 #define DARWIN 4
 #define MSVC 5
 #define CYGWIN 6
+#define LINUX 7
 #if defined(_MSC_VER)
 #define SYSTEM MSVC
 #define BYTE_SWAPPED
@@ -48,11 +49,24 @@
 #elif defined(__MINGW32__) || defined(__CYGWIN__)
 #define SYSTEM CYGWIN
 #define BYTE_SWAPPED
-#elif defined(LINUX)
+#elif defined(__linux__)
 #define SYSTEM LINUX
+#include <endian.h>
+#if __BYTE_ORDER == __LITTLE_ENDIAN
 #define BYTE_SWAPPED
+#elif __BYTE_ORDER == __BIG_ENDIAN
+#else
+#error "Can't determine byte order"
+#endif
 #else
 #error "What system is it?"
+#endif
+
+/* Set a macro used to tell if real tapes are supported */
+#if SYSTEM == DARWIN || SYSTEM == MSVC || SYSTEM == CYGWIN || SYSTEM == LINUX
+#define REALTAPES 0
+#else
+#define REALTAPES 1
 #endif
 
 /* Macros to swap shorts and ints if necessary and do nothing if not.

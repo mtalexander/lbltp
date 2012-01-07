@@ -166,7 +166,7 @@ int tpread(struct deviceinfo *tape,unsigned char *buf,unsigned int len)
  
   if (tape->realtape == YES)
    {
-#if SYSTEM == DARWIN || SYSTEM == MSVC || SYSTEM == CYGWIN
+#if REALTAPES == 0
     /* Don't support real tapes on Darwin or Windows */
     issue_ferror_message("No real tapes on Darwin or Windows\n");
     tape->fatal = 1;
@@ -188,7 +188,7 @@ int tpread(struct deviceinfo *tape,unsigned char *buf,unsigned int len)
     if (len_read > 0) tape->vblkno++;
 #endif
     return(len_read);                       /* real tape-real read */
-#endif    /* DARWIN or MSVC or SYSTEM == CYGWIN */
+#endif    /* REALTAPES == 0 */
    }
   if (tape->tape_type==FILESYSTEM)
    {
@@ -318,12 +318,12 @@ int tpwrite(struct deviceinfo *tape ,const unsigned char *buf,unsigned int len)
 
   if (tape->realtape==YES)
    {
-#if SYSTEM == DARWIN || SYSTEM == MSVC || SYSTEM == CYGWIN
+#if REALTAPES == 0
     /* Don't support real tapes on Darwin or Windows */
     issue_ferror_message("No real tapes on Darwin or Windows\n");
     tape->fatal = 1;
     return -1;
-#else   /* DARWIN or MSVC or SYSTEM == CYGWIN */
+#else   /* REALTAPES == 0 */
     unsigned int len_write;
     
     len_write = write(tape->file,buf,len);   /* real tape-real write */
@@ -337,7 +337,7 @@ int tpwrite(struct deviceinfo *tape ,const unsigned char *buf,unsigned int len)
     if (len_write > 0) tape->vblkno++;
 #endif
     return(len_write);
-#endif    /* DARWIN or MSVC or SYSTEM == CYGWIN */
+#endif    /* REALTAPES == 0 */
    }
   if (len != 0)                                   /* have a record to write? */
    {
@@ -396,12 +396,12 @@ int tapefsf(struct deviceinfo *tape, int count)
 
   if (tape->realtape == YES)                      /* real tape? */
    {
-#if SYSTEM == DARWIN || SYSTEM == MSVC || SYSTEM == CYGWIN
+#if REALTAPES == 0
     /* Don't support real tapes on Darwin */
     issue_ferror_message("No real tapes on Darwin or Windows\n");
     tape->fatal = 1;
     return -1;
-#else   /* DARWIN or MSVC or SYSTEM == CYGWIN */
+#else   /* REALTAPES == 0 */
 #if SYSTEM == SOLARIS || SYSTEM == OS4
     tapec.mt_count=count;                         /* yep - set FSF count */
     tapec.mt_op=MTFSF;                            /* set for FSF */
@@ -421,7 +421,7 @@ int tapefsf(struct deviceinfo *tape, int count)
     tape->vblkno=0;
 #endif  
     return 0;
-#endif   /* DARWIN or MSVC or SYSTEM == CYGWIN */
+#endif   /* REALTAPES == 0 */
    }
   else if (tape->realtape == NO)                  /* virtual tape? */
    {
@@ -514,12 +514,12 @@ int taperew(struct deviceinfo *tape)
 
   if (tape->realtape == YES)                 /* this a real tape? */ 
    {
-#if SYSTEM == DARWIN || SYSTEM == MSVC || SYSTEM == CYGWIN
+#if REALTAPES == 0
     /* Don't support real tapes on Darwin or Windows */
     issue_ferror_message("No real tapes on Darwin or Windows\n");
     tape->fatal = 1;
     return -1;
-#else   /* DARWIN or MSVC or SYSTEM == CYGWIN */
+#else   /* REALTAPES == 0 */
 #if SYSTEM == SOLARIS || SYSTEM == OS4
     tapec.mt_count=1;                        /* yep rewind tape */
     tapec.mt_op=MTREW;
@@ -530,7 +530,7 @@ int taperew(struct deviceinfo *tape)
     tape->vfileno=tape->vblkno=0;
 #endif
     return 0;
-#endif   /* DARWIN or MSVC or SYSTEM == CYGWIN */
+#endif   /* REALTAPES == 0 */
    }
   else if (tape->realtape == NO)             /* this a virtual tape? */ 
    {
@@ -559,12 +559,12 @@ int tapebsr(struct deviceinfo *tape,int count)
    {fprintf(stderr,"BSR for more than 1 record not yet supported"); exit(2);}
   if (tape->realtape == YES)             /* real tape? */
    {
-#if SYSTEM == DARWIN || SYSTEM == MSVC || SYSTEM == CYGWIN
+#if REALTAPES == 0
     /* Don't support real tapes on Darwin or Windows */
     issue_ferror_message("No real tapes on Darwin or Windows\n");
     tape->fatal = 1;
     return -1;
-#else   /* DARWIN or MSVC or SYSTEM == CYGWIN */
+#else   /* REALTAPES == 0 */
 #if SYSTEM == SOLARIS || SYSTEM == OS4
     tapec.mt_count=1;               /* yep - set count (currently always one) */
     tapec.mt_op=MTBSR;                   /* set to do BSR */
@@ -576,7 +576,7 @@ int tapebsr(struct deviceinfo *tape,int count)
     tape->vblkno-=count;
 #endif
     return 0;
-#endif   /* DARWIN or MSVC or SYSTEM == CYGWIN */
+#endif   /* REALTAPES == 0 */
    }
   else if (tape->realtape == NO)         /* virtual tape? */
    {
@@ -608,12 +608,12 @@ int tapestatus(struct deviceinfo *tape, struct tapestats *tapestats)
 
   if (tape->realtape == YES)                       /* real tape? */
    {
-#if SYSTEM == DARWIN || SYSTEM == MSVC || SYSTEM == CYGWIN
+#if REALTAPES == 0
     /* Don't support real tapes on Darwin or Windows */
     issue_ferror_message("No real tapes on Darwin or Windows\n");
     tape->fatal = 1;
     return -1;
-#else   /* DARWIN or MSVC or SYSTEM == CYGWIN */
+#else   /* REALTAPES == 0 */
 #if SYSTEM == SOLARIS || SYSTEM == OS4
     rc=ioctl(tape->file,MTIOCGET,&tapes);          /* yep get hardware info */
     tapestats->mt_fileno=tapes.mt_fileno;          /* move */      
@@ -625,7 +625,7 @@ int tapestatus(struct deviceinfo *tape, struct tapestats *tapestats)
     tapestats->mt_blkno=tape->vblkno;              /* and block number */
     return (0);                                    /* done */
 #endif
-#endif   /* DARWIN or MSVC or SYSTEM == CYGWIN */
+#endif   /* REALTAPES == 0 */
    }
   else if (tape->realtape == NO)                   /* virtual tape ? */
    {
@@ -658,12 +658,12 @@ int tapebsf(struct deviceinfo *tape, int count)
 
   if (tape->realtape == YES)              /* Is this a real tape */
    {
-#if SYSTEM == DARWIN || SYSTEM == MSVC || SYSTEM == CYGWIN
+#if REALTAPES == 0
     /* Don't support real tapes on Darwin */
     issue_ferror_message("No real tapes on Darwin or Windows\n");
     tape->fatal = 1;
     return -1;
-#else   /* DARWIN or MSVC or SYSTEM == CYGWIN */
+#else   /* REALTAPES == 0 */
 #if SYSTEM == SOLARIS || SYSTEM == OS4
     tapec.mt_count=count;                 /* yep - number of files back space */
     tapec.mt_op=MTBSF;                    /* set to do Back Space file */
@@ -683,7 +683,7 @@ int tapebsf(struct deviceinfo *tape, int count)
      }
 #endif
     return 0;
-#endif   /*   DARWIN or MSVC or SYSTEM == CYGWIN  */
+#endif   /*   REALTAPES == 0  */
    }
   else if (tape->realtape == NO)          /* this a Virtual tape? */
    {
@@ -736,12 +736,12 @@ int tapeweof(struct deviceinfo *tape, int count)
 
   if (tape->realtape == YES)              /* this a real tape? */
    {
-#if SYSTEM == DARWIN || SYSTEM == MSVC || SYSTEM == CYGWIN
+#if REALTAPES == 0
     /* Don't support real tapes on Darwin or Windows */
     issue_ferror_message("No real tapes on Darwin or Windows\n");
     tape->fatal = 1;
     return -1;
-#else   /* DARWIN or MSVC or SYSTEM == CYGWIN */
+#else   /* REALTAPES == 0 */
 #if SYSTEM == SOLARIS || SYSTEM == OS4
     tapec.mt_count=count;              /* yep - number of tape marks to write */
     tapec.mt_op=MTWEOF;                   /* set to write tape marks */
@@ -752,7 +752,7 @@ int tapeweof(struct deviceinfo *tape, int count)
     tape->vfileno+=count;
     tape->vblkno=0;
 #endif
-#endif   /* DARWIN or MSVC or SYSTEM == CYGWIN */
+#endif   /* REALTAPES == 0 */
     return 0;
    }
   else if (tape->realtape == NO)          /* this a virtual tape? */
@@ -873,7 +873,7 @@ int getdrivetype(struct deviceinfo *tape)
   ioctl(tape->file,T_WRBLKLEN,&blklen);
   return(DEV_HALFINCH);
 #endif
-#if SYSTEM == DARWIN || SYSTEM == MSVC || SYSTEM == CYGWIN
+#if REALTAPES == 0
   fprintf(stderr, "GETDRIVETYPE No real tapes on Darwin or Windows\n");
   exit(2);
 #endif
