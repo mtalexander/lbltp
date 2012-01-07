@@ -4,7 +4,7 @@
 # a VPATH directive to find it.
 VPATH=../Source
 
-CFLAGS=-I/usr/include -Wall -Wno-switch -Winline -Wmissing-prototypes -Wsign-compare -Wundef -Wstrict-prototypes -Wpacked -Wpointer-arith -Wmissing-declarations -Wno-char-subscripts -g -O3
+CFLAGS=-I/usr/include -Wall -Wno-switch -Winline -Wmissing-prototypes -Wsign-compare -Wundef -Wstrict-prototypes -Wpacked -Wpointer-arith -Wmissing-declarations -Wno-char-subscripts -Wno-strict-aliasing -g -O3
 
 LDFLAGS=
 
@@ -13,7 +13,7 @@ objs=fsrtns.o  functions.o  linemode.o  machine.o  vars.o
 all : lbltp
 
 lbltp : $(objs)
-	gcc $(LDFLAGS) -o $@ $(objs)
+	${CC} $(LDFLAGS) -o $@ $(objs)
 
 fsrtns.o : lbltp.h vars.h translate.h fsrtns.h machine.h functions.h
 functions.o : lbltp.h vars.h translate.h functions.h fsrtns.h linemode.h machine.h
