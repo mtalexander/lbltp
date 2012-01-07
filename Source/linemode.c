@@ -317,7 +317,7 @@ char *getAnotherFile(char *filename)
    if (len>0 && strspn(&*(equal+1),"0123456789") == len) /* legal string */    \
     start=atoi(&*(equal+1));                   /* yep get numeric equiv */     \
    else if(strcmp(&*(equal+1),"EOT") == 0)     /* EOT used? - strange */       \
-    start=LONG_MAX;                            /* set to large number */       \
+    start=INT_MAX;                             /* set to large number */       \
    if ((len==0) || (start<1))                  /* valid number? */             \
     {                                                                          \
      fprintf(stderr," `%s' is illegal\n",parsv[i]); /* no - tell user */       \
@@ -329,7 +329,7 @@ char *getAnotherFile(char *filename)
      if (len>0 && strspn(&*(minus+1),"0123456789") == len) /* legal? */        \
       end=atoi(&*(minus+1));                   /* yep ste number equiv */      \
      else if(strcmp(&*(minus+1),"EOT") == 0)   /* EOT used? */                 \
-      end=LONG_MAX;                            /* set to large number */       \
+      end=INT_MAX;                             /* set to large number */       \
      if ((len==0) || (end<1))                  /* valid number? */             \
       {                                                                        \
        fprintf(stderr," `%s' is illegal\n",parsv[i]); /* no tell user */       \
@@ -369,7 +369,6 @@ static int closcmd(int parsc,unsigned char *parsv[])
 
 static int copycmd(int parsc,unsigned char *parsv[])
  {
-  struct deviceinfo *idevice, *odevice;
   struct buf_ctl  input_ctl, output_ctl;
   unsigned int j, len;
   int i;
@@ -378,7 +377,6 @@ static int copycmd(int parsc,unsigned char *parsv[])
   memset(&input_ctl, 0, sizeof(input_ctl));
   memset(&output_ctl, 0, sizeof(output_ctl));
   
-  idevice=odevice=NULL;  /* input/output devices not defined */
   input_ctl.iofrom=output_ctl.iofrom=-1;
   input_ctl.translate=-1; /* translate mode not set */
   output_ctl.translate=-1; /* translate mode not set */
@@ -645,13 +643,11 @@ static int dispcmd(int parsc,unsigned char *parsv[])
 
 static int ditocmd(int parsc,unsigned char *parsv[])
  {
-  char *tapeowner, *tapevol, *equal;
+  char *equal;
   unsigned char *tapename;
   int i,j,len;
   int tape_type;
  
-  tapeowner="";                        /* default tape owner */
-  tapevol=NULL;                        /* no volume given */
   tapename=NULL;                       /* no file/device name given */
   tape_type = DEV_AWSTAPE;             /* Assume AWStape format, not FakeTape */
   for (i=1; i<= parsc; i++)            /* cycle through pars */
@@ -713,7 +709,6 @@ static int ditocmd(int parsc,unsigned char *parsv[])
 
 static int duplcmd(int parsc,unsigned char *parsv[])
  {
-  struct deviceinfo *idevice, *odevice;
   struct buf_ctl  input_ctl, output_ctl;
   unsigned int j, len;
   int i;
@@ -722,7 +717,6 @@ static int duplcmd(int parsc,unsigned char *parsv[])
   memset(&input_ctl, 0, sizeof(input_ctl));
   memset(&output_ctl, 0, sizeof(output_ctl));
   
-  idevice=odevice=NULL;  /* input/output devices not defined */
   input_ctl.iofrom=output_ctl.iofrom=-1;
   input_ctl.translate=-1; /* translate mode not set */
   output_ctl.translate=-1; /* translate mode not set */
@@ -1179,7 +1173,7 @@ static int listcmd(int parsc,unsigned char *parsv[])
   docsw='\0';                              /* don't list fs documentation */
   notify=date_sw=0;
   start_file=1;                            /* default starting file */
-  end_file=LONG_MAX;                       /* default ending file */
+  end_file=INT_MAX;                        /* default ending file */
   if (parsc>0)   
    {
     for (i=1; i<= parsc; i++)              /* cycle through command */
@@ -1402,7 +1396,7 @@ static int posncmd(int parsc,unsigned char *parsv[])
     else if (strcmp((char *)var_name,"OUTPUT") == 0)
      tape=&tapeo;                         /* if output tape set control block */
     else if (strcmp((char *)var_name,"EOT") ==0)
-     position=LONG_MAX;                /* treat end of tape as a large number */
+     position=INT_MAX;                 /* treat end of tape as a large number */
     else if (len>0 && strspn((char *)var_name,"0123456789") == len)
      {get_number((char *)var_name,position,1)} /*get requested logical file  #*/
     else
@@ -1460,11 +1454,10 @@ static int recmcmd(int parsc,unsigned char *parsv[])
 
 static int rewcmd(int parsc,unsigned char *parsv[])
  {
-  int i, j, lp, len;
+  int i, j, len;
   struct deviceinfo *tape;
 
   tape=NULL;                                /* no tape specified */
-  lp=-1;                                    /* no label processing to set */
   for (i=1; i<= parsc; i++)                 /* cycle though pars */
    {
     len=strlen((char *)parsv[i]);           /* length of par */
@@ -1482,11 +1475,10 @@ static int rewcmd(int parsc,unsigned char *parsv[])
 static int termcmd(int parsc,unsigned char *parsv[])
  {
   unsigned int j, len;
-  int i, position, lp;
+  int i, position;
   struct deviceinfo *tape;
 
   tape=NULL;                                /* no tape specified */
-  lp=-1;                                    /* no label processing to set */
   position=-1;
   for (i=1; i<= parsc; i++)                 /* cycle though pars */
    {
@@ -1500,7 +1492,7 @@ static int termcmd(int parsc,unsigned char *parsv[])
      }
     else if (strcmp((char *)var_name,"OUTPUT") == 0) tape=&tapeo; /* output */
     else if (strcmp((char *)var_name,"EOT") ==0)
-     position=LONG_MAX;                /* treat end of tape as a large number */
+     position=INT_MAX;                 /* treat end of tape as a large number */
     else if (len>0 && strspn((char *)var_name,"0123456789") == len)
      {get_number((char *)var_name,position,1)} /*get requested logical file  #*/
     else {fprintf(stderr,"`%s' is illegal\n",parsv[i]); return(-1);} /* oops */

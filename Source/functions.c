@@ -4024,7 +4024,6 @@ long displayfunction(struct deviceinfo *tape,long blocks, long length,
   unsigned char buffer[1060];
   unsigned char segment[90];
   READ_RTN read_rtn;
-  div_t d;
   char *type, *dev, *lp, *next, *drtype;
   int i, j, len, ints;
   int offset, seg_length, quanity, max_seglen;
@@ -4140,7 +4139,7 @@ long displayfunction(struct deviceinfo *tape,long blocks, long length,
 #if SYSTEM == MSVC
       else sprintf(next, "Trtable=undefined");
 #else
-      else sprintf(next," Trtable=undefined %d", (int)(tape->trtable));
+      else sprintf(next," Trtable=undefined %ld", (long)(tape->trtable));
 #endif
      }
     else if (tape->translate ==OFF) sprintf(message_area," Translate=off,");
@@ -4276,7 +4275,6 @@ long displayfunction(struct deviceinfo *tape,long blocks, long length,
          if (tape->data_mode==RECORD) sprintf((char *)&buffer[k],"%8.8X",offset);
          else sprintf((char *)&buffer[k],"%8.8X",i);
          k+=8;
-         d=div(seg_length,4);
          for (j=0;j <seg_length;j++)                   /* print out in hex rep */
           {
            if (j%4 == 0) {buffer[k] = ' '; k++;}
@@ -4390,7 +4388,7 @@ int dittofunction(char *tapename,long notify,int tape_type)
   lpfunction(&tapei,OFF); 
   output_ctl.iofrom=1;   
   input_ctl.start_file=1;
-  input_ctl.end_file=LONG_MAX;
+  input_ctl.end_file=INT_MAX;
   copyfunction(&input_ctl,&output_ctl,OFF);
   tapei.blocking=blocking;
   tapei.translate=translate;
@@ -4660,7 +4658,7 @@ int terminatefunction (struct deviceinfo *tape,int fileNumber)
     issue_error_message("Position value must be positive\n");
     return(-1);
    }
-  else if (fileNumber == LONG_MAX)
+  else if (fileNumber == INT_MAX)
    {
     issue_error_message("EOT is not an acceptable value for terminate\n");
     return(-1);
