@@ -2993,6 +2993,7 @@ static unsigned char *crefname(unsigned char * filename)
       case (':'):                     /* Check for ID prefixing the filename */
         j = 0;                        /* skip CCID: */
         break;
+#if 0
       case ('*'):/* Following characters aren't really good to use in Unix */
       case ('<'):
       case ('>'):
@@ -3001,6 +3002,7 @@ static unsigned char *crefname(unsigned char * filename)
       case ('@'):
       case ('!'):
       case ('&'):
+#endif
       case ('/'):
       case ('\\'):
         filename[j++] = '_';           /* these characters go to _ */
