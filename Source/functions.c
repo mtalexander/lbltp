@@ -2764,7 +2764,8 @@ static int tflush(struct deviceinfo *device,int last_write)
       sprintf(dw_char,"%04d",dw);
       memcpy(device->buffer,dw_char,4);
      }
-    if (device->format[0] == 'D')               /* format  D, DB, DS DBS? */
+    if (device->seg_start != &device->buffer[device->offset] &&
+        device->format[0] == 'D')               /* format  D, DB, DS DBS? */
      {
       memcpy(&dw,device->seg_start+device->span,4); /* yep need to transform */
       sprintf(dw_char,"%04d",dw);                   /* last RDW to char */     
