@@ -626,10 +626,12 @@ int tpopen(int open_type, unsigned char * device_name, int is_VLO_tape, int not_
         }
        memcpy(tape->vol1,tape->buffer,80);  /* copy VOL1 record */
        memcpy(tape->volume,&tape->vol1[4],6); /* copy volume name */
-       for (i=0;i<6 && tape->volume[i] != ' ';i++) ; /* and terminate */
+       for (i=0;i<6 && tape->volume[i] != ' ';i++) /* and terminate */
+          ;
         tape->volume[i]='\0';
        memcpy(tape->owner,&tape->vol1[37],14); /* copy owner ID */
-       for (i=0;i<14 && tape->owner[i] != ' ';i++) ; /* and terminate */
+       for (i=0;i<14 && tape->owner[i] != ' ';i++) /* and terminate */
+          ;
         tape->owner[i]='\0';                 
        tape->translate=OFF;                /* default to no translate */
        tape->tape_type=ANSI_LABEL;         /* set tape type to ansi label */
@@ -3525,7 +3527,7 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
     if (copy_type==TAPE)                         /* copy to a tape? */ 
      {
       char file_number_c[30];
-      if (odevice->file_name==NULL)
+      if (odevice->file_name[0]==0)
        sprintf(file_number_c," file %d",odevice->position); /*get out file num*/
       else 
        sprintf(file_number_c," file %d %s",odevice->position,odevice->file_name); /*get out file num*/
