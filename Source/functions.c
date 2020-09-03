@@ -111,7 +111,7 @@ static unsigned char *verfname(unsigned char *,struct buf_ctl *,int);
 static int getfname(struct deviceinfo *);
 
 /* Static data */
-static unsigned char path_name[4096];
+static unsigned char home_path[4096];
 static char fname[258];
 static char julian_date[20];
 static int cancel_command=OFF;
@@ -2866,9 +2866,9 @@ static char *getpath(char * path)
       if (slash != NULL) path = slash;     /* point to low end of name */
       else path="";                        /* theres nothing to point at */
      }
-    strcpy((char *)path_name,home);      /* put in full directory path */
-    strcat((char *)path_name,path);      /* cancat with low end parth */
-    return ((char *)&path_name);         /* return full path name */
+    strcpy((char *)home_path,home);      /* put in full directory path */
+    strcat((char *)home_path,path);      /* cancat with low end parth */
+    return ((char *)&home_path);         /* return full path name */
    }
 #endif
   return(path);                         /* return original name */
