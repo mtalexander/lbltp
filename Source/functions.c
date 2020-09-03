@@ -3297,7 +3297,8 @@ int copyfunction(struct buf_ctl *in_buf_ctl,struct buf_ctl *out_buf_ctl,
         if (input_type != TAPE) free(idevice);
         return (-1);
        }
-      strcpy((char *)opath_name,path_name); /* make a copy for future ref */ 
+      if((char *)opath_name != path_name)
+        strcpy((char *)opath_name,path_name); /* make a copy for future ref */ 
       opath=opath_name;
       if (out_buf_ctl->copy_type==TAPE)    /* was this a tape? */
        {
